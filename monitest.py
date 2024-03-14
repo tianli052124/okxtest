@@ -1,9 +1,4 @@
 import okx.Account as Account
-import okx.MarketData as MarketData
-flag = "1"  # live trading: 0, demo trading: 1
-marketDataAPI = MarketData.MarketAPI(flag=flag)
-result = marketDataAPI.get_tickers(instType="SPOT")
-print(result)
 api_key = "e1b9fa18-438f-4186-8679-2e1a31cac369"
 secret_key = "ED6A1408691C36597446782AA57D8BC3"
 passphrase = "Llz0102!!"
