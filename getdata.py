@@ -1,9 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-
-pd.set_option("display.max_rows", None)
-
 # Send a GET request to the URL
 url = "https://www.okx.com/cn/markets/arbitrage/funding-usdt"
 response = requests.get(url)
@@ -29,7 +26,7 @@ if response.status_code == 200:
         df = pd.DataFrame(rows[1:], columns=headers)
 
         # Print the DataFrame
-        # print(df)
+        print(df)
 
     else:
         print("Table not found on the webpage.")
@@ -37,4 +34,17 @@ if response.status_code == 200:
 else:
     print("Failed to retrieve the webpage. Status code:", response.status_code)
 
-print(df.sort_values(by=["持仓价值"], ascending=False))
+
+# Define a function to convert values
+def convert_value(value):
+    value = value.replace(',', '')
+    if '亿' in value:
+        return float(value.replace('亿', '')) * 10000
+    elif '万' in value:
+        return float(value.replace('万', ''))
+    else:
+        return value
+
+df['持仓价值'] = df['持仓价值'].apply(convert_value)
+
+print(df)
