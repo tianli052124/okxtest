@@ -42,9 +42,12 @@ def convert_value(value):
         return float(value.replace('亿', '')) * 10000
     elif '万' in value:
         return float(value.replace('万', ''))
+    elif '%' in value:
+        return float(value.replace('%',''))
     else:
         return value
 
-df['持仓价值'] = df['持仓价值'].apply(convert_value)
+df = df.map(convert_value)
 
-print(df)
+
+print(df.dtypes)
