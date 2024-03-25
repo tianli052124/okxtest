@@ -26,7 +26,7 @@ if response.status_code == 200:
         df = pd.DataFrame(rows[1:], columns=headers)
 
         # Print the DataFrame
-        print(df)
+        # print(df)
 
     else:
         print("Table not found on the webpage.")
@@ -47,7 +47,14 @@ def convert_value(value):
     else:
         return value
 
+# Convert Dataframe value
 df = df.map(convert_value)
 
+#Sort by market value
+df = df.sort_values('持仓价值',ascending=False)
 
-print(df.dtypes)
+df = df.head(50)
+
+arbitrageset = df['币种'].tolist()
+print(df)
+print(arbitrageset)
