@@ -25,9 +25,10 @@ InstRate = publicdataAPI.get_funding_rate(
 
 
 #获取手续费
-Fee_rate = accountAPI.get_fee_rates(
+FeeRate = accountAPI.get_fee_rates(
     instType ="SPOT",
     instId = "BTC-USDT"
 )
 
-print(InstRate,Fee_rate)
+FeeRateMaker = FeeRate['data'][0]['maker']
+print(FeeRateMaker)
