@@ -16,9 +16,4 @@ accountAPI = Account.AccountAPI(api_key, secret_key, passphrase, False, flag)
 result = accountAPI.get_account_balance()
 print(json.dumps(result, sort_keys=True, indent=4))
 
-# 获取合约费率信息
-publicdataAPI = PublicData.PublicAPI(flag=flag)
-InstRate = publicdataAPI.get_funding_rate(
-    instId="BTC-USD-SWAP",
-)
 print(InstRate)
