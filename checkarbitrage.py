@@ -74,20 +74,27 @@ InstRate = publicdataAPI.get_funding_rate(
     instId="BTC-USDT-SWAP",
 )
 
+# 获取资金费
+Feerate = InstRate["data"][0]["fundingRate"]
 
-# 获取现货手续费
+# 获取现货手续费dataset
 SpotRate = accountAPI.get_fee_rates(instType="SPOT", instId="BTC-USDT")
-# 获取合约手续费
-SwapRate = accountAPI.get_fee_rates(instType="SWAP", instId="BTC-USDT")
+# 获取合约手续费dataset
+SwapRate = accountAPI.get_fee_rates(instType="SWAP", instFamily="BTC-USDT")
+
 
 # 获取现货挂单手续费
 SpotRateMaker = SpotRate["data"][0]["maker"]
 # 获取现货吃单手续费
 SpotRateTaker = SpotRate["data"][0]["taker"]
 
+# 获取合约挂单手续费
+SwapRateMaker = SwapRate["data"][0]["makerU"]
+# 获取合约吃单手续费
+SwapRateTaker = SwapRate["data"][0]["takerU"]
+
 
 print(
-    FeeRateMaker,
     InstRate["data"][0]["fundingRate"],
     InstRate["data"][0]["settFundingRate"],
     InstRate["data"][0]["settState"],

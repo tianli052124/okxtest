@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
+
 # Send a GET request to the URL
 url = "https://www.okx.com/cn/markets/arbitrage/funding-usdt"
 response = requests.get(url)
@@ -37,24 +38,23 @@ else:
 
 # Define a function to convert values
 def convert_value(value):
-    value = value.replace(',', '')
-    if '亿' in value:
-        return float(value.replace('亿', '')) * 10000
-    elif '万' in value:
-        return float(value.replace('万', ''))
-    elif '%' in value:
-        return float(value.replace('%',''))
+    value = value.replace(",", "")
+    if "亿" in value:
+        return float(value.replace("亿", "")) * 10000
+    elif "万" in value:
+        return float(value.replace("万", ""))
+    elif "%" in value:
+        return float(value.replace("%", ""))
     else:
         return value
+
 
 # Convert Dataframe value
 df = df.map(convert_value)
 
-#Sort by market value
-df = df.sort_values('持仓价值',ascending=False)
-
+# Sort by market value
+df = df.sort_values("持仓价值", ascending=False)
+# Choose top 50 crypto
 df = df.head(50)
-
-arbitrageset = df['币种'].tolist()
-print(df)
-print(arbitrageset)
+# value to list
+arbitrageset = df["币种"].tolist()
