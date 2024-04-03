@@ -98,4 +98,5 @@ print(
     InstRate["data"][0]["fundingRate"],
     InstRate["data"][0]["settFundingRate"],
     InstRate["data"][0]["settState"],
+    InstRate["data"][0]["method"],
 )
