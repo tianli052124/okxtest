@@ -64,39 +64,39 @@ api_key = "e1b9fa18-438f-4186-8679-2e1a31cac369"
 secret_key = "ED6A1408691C36597446782AA57D8BC3"
 passphrase = "Llz0102!!"
 
-item = "BTC"
+item = "DOGE"
 
 publicdataAPI = PublicData.PublicAPI(flag=flag)
 accountAPI = Account.AccountAPI(api_key, secret_key, passphrase, False, flag)
 
 # 获取资金费率信息
 InstRate = publicdataAPI.get_funding_rate(
-    instId="BTC-USDT-SWAP",
+    instId=item+"-USDT-SWAP",
 )
 
 # 获取资金费
-Feerate = InstRate["data"][0]["fundingRate"]
+Feerate = float(InstRate["data"][0]["fundingRate"])
 
 # 获取现货手续费dataset
-SpotRate = accountAPI.get_fee_rates(instType="SPOT", instId="BTC-USDT")
+SpotRate = accountAPI.get_fee_rates(instType="SPOT", instId=item+"-USDT")
 # 获取合约手续费dataset
-SwapRate = accountAPI.get_fee_rates(instType="SWAP", instFamily="BTC-USDT")
+SwapRate = accountAPI.get_fee_rates(instType="SWAP", instFamily=item+"-USDT")
 
 
 # 获取现货挂单手续费
-SpotRateMaker = SpotRate["data"][0]["maker"]
+SpotRateMaker = float(SpotRate["data"][0]["maker"])
 # 获取现货吃单手续费
-SpotRateTaker = SpotRate["data"][0]["taker"]
+SpotRateTaker = float(SpotRate["data"][0]["taker"])
 
 # 获取合约挂单手续费
-SwapRateMaker = SwapRate["data"][0]["makerU"]
+SwapRateMaker = float(SwapRate["data"][0]["makerU"])
 # 获取合约吃单手续费
-SwapRateTaker = SwapRate["data"][0]["takerU"]
+SwapRateTaker = float(SwapRate["data"][0]["takerU"])
 
+#获取标记价格
+Markprice = float(publicdataAPI.get_mark_price(instType="SWAP",instId=item+"-USDT-SWAP")["data"][0]["markPx"])
+Spotprice = float(publicdataAPI.get_mark_price(instType="MARGIN",instId=item+"-USDT")["data"][0]["markPx"])
 
 print(
-    InstRate["data"][0]["fundingRate"],
-    InstRate["data"][0]["settFundingRate"],
-    InstRate["data"][0]["settState"],
-    InstRate["data"][0]["method"],
+    Feerate*Markprice+SwapRateTaker*Markprice+SpotRateTaker*Spotprice
 )
