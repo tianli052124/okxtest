@@ -1,102 +1,57 @@
-list = [
-    "BTC",
-    "ETH",
-    "SOL",
-    "DOGE",
-    "ORDI",
-    "XRP",
-    "PEPE",
-    "LTC",
-    "WLD",
-    "FIL",
-    "OP",
-    "BCH",
-    "SHIB",
-    "CFX",
-    "AVAX",
-    "ARB",
-    "APT",
-    "BNB",
-    "ADA",
-    "FTM",
-    "TON",
-    "NEAR",
-    "SATS",
-    "MATIC",
-    "SUI",
-    "TRB",
-    "STX",
-    "LINK",
-    "ETC",
-    "TIA",
-    "STRK",
-    "YGG",
-    "BIGTIME",
-    "ZRX",
-    "DOT",
-    "RNDR",
-    "DYDX",
-    "GALA",
-    "UNI",
-    "PYTH",
-    "ICP",
-    "MKR",
-    "AR",
-    "JUP",
-    "LUNA",
-    "EOS",
-    "AEVO",
-    "PEOPLE",
-    "ETHFI",
-    "BSV",
-]
-
-import json
 import okx.Account as Account
 import okx.PublicData as PublicData
+import time
+import getmarketdata
 
-
-# 选择实盘还是模拟
-flag = "1"  # live trading: 0, demo trading: 1
-
-# 获取对应API信息
+# API验证信息
 api_key = "e1b9fa18-438f-4186-8679-2e1a31cac369"
 secret_key = "ED6A1408691C36597446782AA57D8BC3"
 passphrase = "Llz0102!!"
 
-item = "DOGE"
-
+# API验证
+flag = "1"
 publicdataAPI = PublicData.PublicAPI(flag=flag)
 accountAPI = Account.AccountAPI(api_key, secret_key, passphrase, False, flag)
 
-# 获取资金费率信息
-InstRate = publicdataAPI.get_funding_rate(
-    instId=item+"-USDT-SWAP",
-)
-
-# 获取资金费
-Feerate = float(InstRate["data"][0]["fundingRate"])
-
+# 查询手续费（由于全品种手续费都一样，所以用BTC查询）
 # 获取现货手续费dataset
-SpotRate = accountAPI.get_fee_rates(instType="SPOT", instId=item+"-USDT")
+spotrate = accountAPI.get_fee_rates(instType="SPOT", instId="BTC-USDT")
 # 获取合约手续费dataset
-SwapRate = accountAPI.get_fee_rates(instType="SWAP", instFamily=item+"-USDT")
-
-
+swaprate = accountAPI.get_fee_rates(instType="SWAP", instFamily="BTC-USDT")
 # 获取现货挂单手续费
-SpotRateMaker = float(SpotRate["data"][0]["maker"])
+spotratemaker = float(spotrate["data"][0]["maker"])
 # 获取现货吃单手续费
-SpotRateTaker = float(SpotRate["data"][0]["taker"])
-
+spotratetaker = float(spotrate["data"][0]["taker"])
 # 获取合约挂单手续费
-SwapRateMaker = float(SwapRate["data"][0]["makerU"])
+swapratemaker = float(swaprate["data"][0]["makerU"])
 # 获取合约吃单手续费
-SwapRateTaker = float(SwapRate["data"][0]["takerU"])
+swapratetaker = float(swaprate["data"][0]["takerU"])
 
-#获取标记价格
-Markprice = float(publicdataAPI.get_mark_price(instType="SWAP",instId=item+"-USDT-SWAP")["data"][0]["markPx"])
-Spotprice = float(publicdataAPI.get_mark_price(instType="MARGIN",instId=item+"-USDT")["data"][0]["markPx"])
+# 导入按市值排列前50的币的列表
+tokenlist = getmarketdata.arbitrageset
 
-print(
-    Feerate*Markprice+SwapRateTaker*Markprice+SpotRateTaker*Spotprice
-)
+def gettokeninfo(item):
+    # 获取资金费率信息
+    InstRate = publicdataAPI.get_funding_rate(instId=item + "-USDT-SWAP",)
+    # 获取资金费率
+    feerate = float(InstRate["data"][0]["fundingRate"])
+    # 获取标记价格
+    mark_price = publicdataAPI.get_mark_price(instType="SWAP", instFamily=item+"-USDT")
+    return item, feerate, mark_price
+
+def checkarbitrage(token):
+    threshold_funding_rate = 0.0001
+    tokeninfo = gettokeninfo(token)
+    # 费率大于0则选择正套法，买入现货，卖出永续合约
+    if tokeninfo[1]>threshold_funding_rate:
+        # 查看扣除手续费以后是否还有套利机会
+        diff = token[1]-
+        if diff > 0:
+
+
+for token in tokenlist:
+    try:
+        print(gettokeninfo(token) [2])
+        time.sleep(2)
+    except:
+        print("数据获取失败")
