@@ -36,14 +36,14 @@ def gettokeninfo(item):
     # 获取资金费率
     feerate = float(InstRate["data"][0]["fundingRate"])
     # 获取标记价格
-    mark_price = publicdataAPI.get_mark_price(instType="SWAP", instFamily=item+"-USDT")
+    mark_price = float(publicdataAPI.get_mark_price(instType="SWAP", instFamily=item+"-USDT")["data"][0]["markPx"])
     return item, feerate, mark_price
 
 def checkarbitrage(token):
     threshold_funding_rate = 0.0001
     tokeninfo = gettokeninfo(token)
     # 费率大于0则选择正套法，买入现货，卖出永续合约
-    if tokeninfo[1]>threshold_funding_rate:
+    if tokeninfo[1]>threshold_funding_rate and :
         # 查看扣除手续费以后是否还有套利机会
         diff = token[1]-
         if diff > 0:
