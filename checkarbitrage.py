@@ -1,5 +1,6 @@
 import okx.Account as Account
 import okx.PublicData as PublicData
+import okx.MarketData as MarketData
 import time
 import getmarketdata
 
@@ -11,6 +12,7 @@ passphrase = "Llz0102!!"
 # API验证
 flag = "1"
 publicdataAPI = PublicData.PublicAPI(flag=flag)
+marketdataAPI = MarketData.MarketAPI(flag=flag)
 accountAPI = Account.AccountAPI(api_key, secret_key, passphrase, False, flag)
 
 # 查询手续费（由于全品种手续费都一样，所以用BTC查询）
@@ -30,6 +32,7 @@ swapratetaker = float(swaprate["data"][0]["takerU"])
 # 导入按市值排列前50的币的列表
 tokenlist = getmarketdata.arbitrageset
 
+set = []
 def gettokeninfo(item):
     # 获取资金费率信息
     InstRate = publicdataAPI.get_funding_rate(instId=item + "-USDT-SWAP",)
@@ -37,21 +40,27 @@ def gettokeninfo(item):
     feerate = float(InstRate["data"][0]["fundingRate"])
     # 获取标记价格
     mark_price = float(publicdataAPI.get_mark_price(instType="SWAP", instFamily=item+"-USDT")["data"][0]["markPx"])
-    return item, feerate, mark_price
+    #获取现货价格
+    spot_price = float(marketdataAPI.get_ticker(instId=item+"-USDT")["data"][0]["last"])
+    return item, feerate, mark_price, spot_price
 
 def checkarbitrage(token):
     threshold_funding_rate = 0.0001
     tokeninfo = gettokeninfo(token)
     # 费率大于0则选择正套法，买入现货，卖出永续合约
-    if tokeninfo[1]>threshold_funding_rate and :
+    if tokeninfo[1]>threshold_funding_rate and tokeninfo[2]/tokeninfo[3]>1:
         # 查看扣除手续费以后是否还有套利机会
-        diff = token[1]-
-        if diff > 0:
-
+        diff = tokeninfo[2]*tokeninfo[1]-tokeninfo[2]*swapratetaker*2.05-tokeninfo[3]*spotratetaker*2.05
+        if diff>0:
+            print(token, "找到了一个")
+            return token
+        else:
+            print(diff)
 
 for token in tokenlist:
     try:
-        print(gettokeninfo(token) [2])
+        if checkarbitrage(token) is not None:
+            set.append(token)
         time.sleep(2)
     except:
         print("数据获取失败")

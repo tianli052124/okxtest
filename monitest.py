@@ -1,6 +1,7 @@
 import json
 import okx.Account as Account
 import okx.PublicData as PublicData
+import checkarbitrage
 
 
 # 选择实盘还是模拟
