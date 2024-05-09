@@ -1,7 +1,7 @@
 import json
 import okx.Account as Account
 import okx.PublicData as PublicData
-import checkarbitrage
+
 
 
 # 选择实盘还是模拟
@@ -15,4 +15,5 @@ passphrase = "Llz0102!!"
 # 获取账户信息
 accountAPI = Account.AccountAPI(api_key, secret_key, passphrase, False, flag)
 result = accountAPI.get_account_balance()
-print(json.dumps(result, sort_keys=True, indent=4))
+interestrate = accountAPI.get_interest_rate("ETH")
+print(json.dumps(result, sort_keys=True, indent=4),interestrate)

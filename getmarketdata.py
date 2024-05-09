@@ -48,10 +48,8 @@ def convert_value(value):
     else:
         return value
 
-
 # Convert Dataframe value
 df = df.map(convert_value)
-
 # Sort by market value
 df = df.sort_values("持仓价值", ascending=False)
 # Choose top 50 crypto
