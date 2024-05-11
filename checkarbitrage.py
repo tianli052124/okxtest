@@ -67,3 +67,5 @@ def checkarbitrage(token):
         else:
             print(diff)
 
+    
+
