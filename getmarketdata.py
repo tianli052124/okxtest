@@ -26,9 +26,6 @@ if response.status_code == 200:
         # Create a DataFrame
         df = pd.DataFrame(rows[1:], columns=headers)
 
-        # Print the DataFrame
-        # print(df)
-
     else:
         print("Table not found on the webpage.")
 

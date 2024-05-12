@@ -36,36 +36,51 @@ set = []
 def gettokeninfo(item):
     # 获取资金费率信息
     InstRate = publicdataAPI.get_funding_rate(instId=item + "-USDT-SWAP")
-    # 获取资金费率
-    feerate = float(InstRate["data"][0]["fundingRate"])
-    # 获取标记价格
-    mark_price = float(publicdataAPI.get_mark_price(instType="SWAP", instFamily=item+"-USDT")["data"][0]["markPx"])
-    #获取现货价格
-    spot_price = float(marketdataAPI.get_ticker(instId=item+"-USDT")["data"][0]["last"])
-    return item, feerate, mark_price, spot_price
+    # 检查crypto是否在交易所上市
+    if InstRate["code"] == "51001":
+        print(item+"未上线")
+        return None
+    else:
+        # 获取资金费率
+        feerate = float(InstRate["data"][0]["fundingRate"])
+        # 获取标记价格
+        mark_price = float(publicdataAPI.get_mark_price(instType="SWAP", instFamily=item+"-USDT")["data"][0]["markPx"])
+        #获取现货价格
+        spot_price = float(marketdataAPI.get_ticker(instId=item+"-USDT")["data"][0]["last"])
+        return item, feerate, mark_price, spot_price
 
 def checkarbitrage(token):
     threshold_funding_rate = 0.0001
     tokeninfo = gettokeninfo(token)
-    # 费率为正，费率大于费率阈值则选择正套法，买入现货，卖出永续合约
-    if tokeninfo[1]>threshold_funding_rate and tokeninfo[2]/tokeninfo[3]>1:
-        # 查看扣除手续费以后是否还有套利机会
-        diff = tokeninfo[2]*tokeninfo[1]-tokeninfo[2]*swapratetaker*2.05-tokeninfo[3]*spotratetaker*2.05
-        if diff>0:
-            print(token, "找到了一个正套标的")
-            return token
-        else:
-            print(diff)
-    # 费率为负，费率小于费率阈值则选择反套法，上杠杆卖出现货，买入永续合约
-    elif tokeninfo[1]<-threshold_funding_rate and tokeninfo[2]/tokeninfo[3]<1:
-        # 检查扣除手续费和杠杆利息后的套利机会情况
-        interestrate = float(accountAPI.get_interest_rate(token)["data"][0]["interestRate"])
-        diff = -tokeninfo[2]*tokeninfo[1]-tokeninfo[2]*swapratetaker*2.05-tokeninfo[3]*spotratetaker*2.05-interestrate/24*4
-        if diff > 0:
-            print(token, "找到了一个反套标的")
-            return token
-        else:
-            print(diff)
+    if tokeninfo == None:
+        return None
+    else:
+        # 费率为正，费率大于费率阈值则选择正套法，买入现货，卖出永续合约
+        if tokeninfo[1] > threshold_funding_rate and tokeninfo[2] / tokeninfo[3] > 1.002:
+            # 查看扣除手续费以后是否还有套利机会
+            diff = tokeninfo[2] * tokeninfo[1] - tokeninfo[2] * swapratetaker * 2.05 - tokeninfo[
+                3] * spotratetaker * 2.05
+            if diff > 0:
+                print(token, "找到了一个正套标的")
+                return token, diff, "positive"
+            else:
+                print(diff)
+        # 费率为负，费率小于费率阈值则选择反套法，上杠杆卖出现货，买入永续合约
+        elif tokeninfo[1] < -threshold_funding_rate and tokeninfo[2] / tokeninfo[3] < 1.002:
+            # 检查扣除手续费和杠杆利息后的套利机会情况
+            interestrate = float(accountAPI.get_interest_rate(token)["data"][0]["interestRate"])
+            diff = -tokeninfo[2] * tokeninfo[1] - tokeninfo[2] * swapratetaker * 2.05 - tokeninfo[
+                3] * spotratetaker * 2.05 - interestrate / 24 * 4
+            if diff > 0:
+                print(token, "找到了一个反套标的")
+                return token, diff, "negative"
+            else:
+                print(diff)
 
-    
+for token in tokenlist:
+    time.sleep(1)
+    result = checkarbitrage(token)
+    if result is not None:
+        set.append(result)
 
+print(set)
