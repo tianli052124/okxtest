@@ -1,86 +1,86 @@
 import okx.Account as Account
 import okx.PublicData as PublicData
 import okx.MarketData as MarketData
-import time
-import getmarketdata
+import pandas as pd
+import getpotentialset
 
 # API验证信息
 api_key = "e1b9fa18-438f-4186-8679-2e1a31cac369"
 secret_key = "ED6A1408691C36597446782AA57D8BC3"
 passphrase = "Llz0102!!"
-
-# API验证
 flag = "1"
+
+# 初始化API
 publicdataAPI = PublicData.PublicAPI(flag=flag)
 marketdataAPI = MarketData.MarketAPI(flag=flag)
 accountAPI = Account.AccountAPI(api_key, secret_key, passphrase, False, flag)
 
-# 查询手续费（由于全品种手续费都一样，所以用BTC查询）
-# 获取现货手续费dataset
-spotrate = accountAPI.get_fee_rates(instType="SPOT", instId="BTC-USDT")
-# 获取合约手续费dataset
-swaprate = accountAPI.get_fee_rates(instType="SWAP", instFamily="BTC-USDT")
-# 获取现货挂单手续费
-spotratemaker = float(spotrate["data"][0]["maker"])
-# 获取现货吃单手续费
-spotratetaker = float(spotrate["data"][0]["taker"])
-# 获取合约挂单手续费
-swapratemaker = float(swaprate["data"][0]["makerU"])
-# 获取合约吃单手续费
-swapratetaker = float(swaprate["data"][0]["takerU"])
+# 获取手续费
+def get_fee_rates():
+    spotrate = accountAPI.get_fee_rates(instType="SPOT", instId="BTC-USDT")
+    swaprate = accountAPI.get_fee_rates(instType="SWAP", instFamily="BTC-USDT")
+    return {
+        "spot_maker": float(spotrate["data"][0]["maker"]),
+        "spot_taker": float(spotrate["data"][0]["taker"]),
+        "swap_maker": float(swaprate["data"][0]["makerU"]),
+        "swap_taker": float(swaprate["data"][0]["takerU"]),
+    }
+
+fee_rates = get_fee_rates()
 
 # 导入按市值排列前50的币的列表
-tokenlist = getmarketdata.arbitrageset
+token_list = getpotentialset.arbitrageset
 
-set = []
-def gettokeninfo(item):
+def get_token_info(token):
     # 获取资金费率信息
-    InstRate = publicdataAPI.get_funding_rate(instId=item + "-USDT-SWAP")
-    # 检查crypto是否在交易所上市
-    if InstRate["code"] == "51001":
-        print(item+"未上线")
+    inst_rate = publicdataAPI.get_funding_rate(instId=f"{token}-USDT-SWAP")
+    if inst_rate["code"] == "51001":
+        print(f"{token}未上线")
         return None
-    else:
-        # 获取资金费率
-        feerate = float(InstRate["data"][0]["fundingRate"])
-        # 获取标记价格
-        mark_price = float(publicdataAPI.get_mark_price(instType="SWAP", instFamily=item+"-USDT")["data"][0]["markPx"])
-        #获取现货价格
-        spot_price = float(marketdataAPI.get_ticker(instId=item+"-USDT")["data"][0]["last"])
-        return item, feerate, mark_price, spot_price
 
-def checkarbitrage(token):
+    # 检查杠杆支持
+    leverage_info = accountAPI.set_leverage(instId=f"{token}-USDT", lever="5", mgnMode="cross")
+    if leverage_info["code"] == "54000":
+        print(f"{token}不支持杠杆")
+        return None
+
+    # 获取其他必要信息
+    feerate = float(inst_rate["data"][0]["fundingRate"])
+    mark_price = float(publicdataAPI.get_mark_price(instType="SWAP", instFamily=f"{token}-USDT")["data"][0]["markPx"])
+    spot_price = float(marketdataAPI.get_ticker(instId=f"{token}-USDT")["data"][0]["last"])
+    ct_val = float(publicdataAPI.get_instruments(instType="SWAP", instFamily=f"{token}-USDT")["data"][0]["ctVal"])
+
+    return token, feerate, mark_price, spot_price, ct_val
+
+def check_arbitrage(token):
     threshold_funding_rate = 0.0001
-    tokeninfo = gettokeninfo(token)
-    if tokeninfo == None:
+    token_info = get_token_info(token)
+    if not token_info:
         return None
-    else:
-        # 费率为正，费率大于费率阈值则选择正套法，买入现货，卖出永续合约
-        if tokeninfo[1] > threshold_funding_rate and tokeninfo[2] / tokeninfo[3] > 1.002:
-            # 查看扣除手续费以后是否还有套利机会
-            diff = tokeninfo[2] * tokeninfo[1] - tokeninfo[2] * swapratetaker * 2.05 - tokeninfo[
-                3] * spotratetaker * 2.05
-            if diff > 0:
-                print(token, "找到了一个正套标的")
-                return token, diff, "positive"
-            else:
-                print(diff)
-        # 费率为负，费率小于费率阈值则选择反套法，上杠杆卖出现货，买入永续合约
-        elif tokeninfo[1] < -threshold_funding_rate and tokeninfo[2] / tokeninfo[3] < 1.002:
-            # 检查扣除手续费和杠杆利息后的套利机会情况
-            interestrate = float(accountAPI.get_interest_rate(token)["data"][0]["interestRate"])
-            diff = -tokeninfo[2] * tokeninfo[1] - tokeninfo[2] * swapratetaker * 2.05 - tokeninfo[
-                3] * spotratetaker * 2.05 - interestrate / 24 * 4
-            if diff > 0:
-                print(token, "找到了一个反套标的")
-                return token, diff, "negative"
-            else:
-                print(diff)
 
-for token in tokenlist:
-    time.sleep(1)
-    result = checkarbitrage(token)
-    if result is not None:
-        set.append(result)
+    token, feerate, mark_price, spot_price, ct_val = token_info
 
-print(set)
+    # 正向套利
+    if feerate > threshold_funding_rate and mark_price / spot_price > 1.002:
+        diff = mark_price * feerate - mark_price * fee_rates["swap_taker"] * 2.05 - spot_price * fee_rates["spot_taker"] * 2.05
+        if diff > 0:
+            print(f"{token}找到了一个正套标的")
+            return token, diff, "positive", ct_val
+
+    # 反向套利
+    elif feerate < -threshold_funding_rate and mark_price / spot_price < 1.002:
+        interest_rate = float(accountAPI.get_interest_rate(token)["data"][0]["interestRate"])
+        diff = -mark_price * feerate - mark_price * fee_rates["swap_taker"] * 2.05 - spot_price * fee_rates["spot_taker"] * 2.05 - interest_rate / 24 * 4
+        if diff > 0:
+            print(f"{token}找到了一个反套标的")
+            return token, diff, "negative", ct_val
+
+    return None
+
+results = [check_arbitrage(token) for token in token_list if check_arbitrage(token)]
+arbitrage_set = pd.DataFrame(results, columns=["Token", "Difference", "Type", "ContractValue"])
+print(arbitrage_set)
+
+# 按差异值排序并取前3
+portfolio = arbitrage_set.sort_values(by="Difference", ascending=False).head(3)
+print(portfolio)
