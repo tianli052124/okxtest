@@ -1,14 +1,19 @@
+# check arbitrage.py
+
 import okx.Account as Account
 import okx.PublicData as PublicData
 import okx.MarketData as MarketData
-import pandas as pd
-import getpotentialset
+import configparser
 
-# API验证信息
-api_key = "e1b9fa18-438f-4186-8679-2e1a31cac369"
-secret_key = "ED6A1408691C36597446782AA57D8BC3"
-passphrase = "Llz0102!!"
-flag = "1"
+# 读取配置文件
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+# 设置API密钥等信息
+api_key = config['API']['api_key']
+secret_key = config['API']['secret_key']
+passphrase = config['API']['passphrase']
+flag = config['SETTINGS']['flag']
 
 # 初始化API
 publicdataAPI = PublicData.PublicAPI(flag=flag)
@@ -27,9 +32,6 @@ def get_fee_rates():
     }
 
 fee_rates = get_fee_rates()
-
-# 导入按市值排列前50的币的列表
-token_list = getpotentialset.arbitrageset
 
 def get_token_info(token):
     # 获取资金费率信息
@@ -53,7 +55,7 @@ def get_token_info(token):
     return token, feerate, mark_price, spot_price, ct_val
 
 def check_arbitrage(token):
-    threshold_funding_rate = 0.0001
+    threshold_funding_rate = 0.00001
     token_info = get_token_info(token)
     if not token_info:
         return None
@@ -61,26 +63,20 @@ def check_arbitrage(token):
     token, feerate, mark_price, spot_price, ct_val = token_info
 
     # 正向套利
-    if feerate > threshold_funding_rate and mark_price / spot_price > 1.002:
-        diff = mark_price * feerate - mark_price * fee_rates["swap_taker"] * 2.05 - spot_price * fee_rates["spot_taker"] * 2.05
+    if feerate > threshold_funding_rate and mark_price / spot_price > 1.001:
+        diff = mark_price * feerate - mark_price * fee_rates["swap_taker"] * 2 - spot_price * fee_rates["spot_taker"] * 2
         if diff > 0:
             print(f"{token}找到了一个正套标的")
             return token, diff, "positive", ct_val
 
     # 反向套利
-    elif feerate < -threshold_funding_rate and mark_price / spot_price < 1.002:
+    elif feerate < -threshold_funding_rate and spot_price / mark_price > 1.001:
         interest_rate = float(accountAPI.get_interest_rate(token)["data"][0]["interestRate"])
-        diff = -mark_price * feerate - mark_price * fee_rates["swap_taker"] * 2.05 - spot_price * fee_rates["spot_taker"] * 2.05 - interest_rate / 24 * 4
+        diff = -mark_price * feerate - mark_price * fee_rates["swap_taker"] * 2 - spot_price * fee_rates["spot_taker"] * 2 - interest_rate / 24 * 4
         if diff > 0:
             print(f"{token}找到了一个反套标的")
             return token, diff, "negative", ct_val
 
     return None
 
-results = [check_arbitrage(token) for token in token_list if check_arbitrage(token)]
-arbitrage_set = pd.DataFrame(results, columns=["Token", "Difference", "Type", "ContractValue"])
-print(arbitrage_set)
 
-# 按差异值排序并取前3
-portfolio = arbitrage_set.sort_values(by="Difference", ascending=False).head(3)
-print(portfolio)
