@@ -15,6 +15,7 @@ class TradeExecutor:
         try:
             result = self.accountAPI.get_account_balance()
             cash_balance = float(result["data"][0]["details"][0]["cashBal"])
+            print(f"Cash balance: {cash_balance}")
             return cash_balance
         except Exception as e:
             print(f"Error getting cash balance: {e}")
@@ -22,14 +23,17 @@ class TradeExecutor:
 
     def set_leverage(self, instId, lever):
         try:
-            self.accountAPI.set_leverage(instId=instId, lever=lever, mgnMode="cross")
+            result = self.accountAPI.set_leverage(instId=instId, lever=lever, mgnMode="cross")
+            print(f"Set leverage result: {result}")
         except Exception as e:
             print(f"Error setting leverage: {e}")
 
     def place_order(self, instId, tdMode, side, ordType, sz, ccy=None, tgtCcy=None, posSide=None, px=None):
         try:
             result = self.tradeAPI.place_order(instId=instId, ccy=ccy, tdMode=tdMode, side=side, ordType=ordType, sz=sz, tgtCcy=tgtCcy, posSide=posSide, px=px)
-            return result["data"][0]["ordId"]  # 返回订单ID
+            order_id = result["data"][0]["ordId"]
+            print(f"Placed order {order_id}: {result}")
+            return order_id
         except Exception as e:
             print(f"Error placing order: {e}")
             return None
@@ -37,7 +41,9 @@ class TradeExecutor:
     def get_order_status(self, instId, ordId):
         try:
             result = self.tradeAPI.get_order(instId=instId, ordId=ordId)
-            return result["data"][0]["state"]
+            order_status = result["data"][0]["state"]
+            print(f"Order status {ordId}: {order_status}")
+            return order_status
         except Exception as e:
             print(f"Error getting order status: {e}")
             return None
@@ -45,15 +51,16 @@ class TradeExecutor:
     def cancel_order(self, instId, ordId):
         try:
             result = self.tradeAPI.cancel_order(instId=instId, ordId=ordId)
+            print(f"Canceled order {ordId}: {result}")
             return result["data"]
         except Exception as e:
             print(f"Error canceling order: {e}")
             return None
 
-    def close_position(self, instId, tdMode, side, posSide, sz):
+    def close_position(self, instId, mgnMode, ccy, posSide):
         try:
-            close_side = "sell" if side == "buy" else "buy"
-            result = self.tradeAPI.place_order(instId=instId, tdMode=tdMode, side=close_side, posSide=posSide, ordType="market", sz=sz)
+            result = self.tradeAPI.close_positions(instId=instId, mgnMode=mgnMode, ccy=ccy, posSide=posSide)
+            print(f"Closed position {instId} with posSide {posSide}: {result}")
             return result["data"]
         except Exception as e:
             print(f"Error closing position: {e}")
@@ -66,6 +73,7 @@ class TradeExecutor:
                     self.accountAPI.get_max_order_size(instId=token + "-USDT", tdMode="cross", ccy="USDT")["data"][0]["maxSell"]
                 )
                 if max_size == 0:
+                    print(f"Max size for selling {token} is zero. Skipping this token.")
                     return False
                 amount = round(min(portion_size / token_info[3], max_size) / contract_value, 0)
                 self.set_leverage(instId=token + "-USDT-SWAP", lever=3)
@@ -74,12 +82,14 @@ class TradeExecutor:
                 margin_order_id = self.place_order(instId=token + "-USDT", ccy="USDT", tdMode="cross", side="sell",
                                                    ordType="market", sz=amount * contract_value, tgtCcy="base_ccy")
                 if not margin_order_id:
+                    print(f"Failed to place margin order for selling {token}")
                     return False
 
                 swap_order_id = self.place_order(instId=token + "-USDT-SWAP", tdMode="cross", side="buy",
                                                  posSide="long", ordType="market", sz=amount)
                 if not swap_order_id:
-                    self.cancel_order(instId=token + "-USDT", ordId=margin_order_id)  # 撤销未执行的订单
+                    print(f"Failed to place swap order for buying {token}")
+                    self.cancel_order(instId=token + "-USDT", ordId=margin_order_id)
                     return False
 
             else:
@@ -87,6 +97,7 @@ class TradeExecutor:
                     self.accountAPI.get_max_order_size(instId=token + "-USDT", tdMode="cross", ccy="USDT")["data"][0]["maxBuy"]
                 )
                 if max_size == 0:
+                    print(f"Max size for buying {token} is zero. Skipping this token.")
                     return False
                 amount = round(min(portion_size / token_info[3], max_size) / contract_value, 0)
                 self.set_leverage(instId=token + "-USDT-SWAP", lever=3)
@@ -95,32 +106,32 @@ class TradeExecutor:
                 margin_order_id = self.place_order(instId=token + "-USDT", ccy="USDT", tdMode="cross", side="buy",
                                                    ordType="limit", sz=amount * contract_value, px=token_info[3])
                 if not margin_order_id:
+                    print(f"Failed to place margin order for buying {token}")
                     return False
 
                 swap_order_id = self.place_order(instId=token + "-USDT-SWAP", tdMode="cross", side="sell",
                                                  posSide="short", ordType="market", sz=amount)
                 if not swap_order_id:
-                    self.cancel_order(instId=token + "-USDT", ordId=margin_order_id)  # 撤销未执行的订单
+                    print(f"Failed to place swap order for selling {token}")
+                    self.cancel_order(instId=token + "-USDT", ordId=margin_order_id)
                     return False
 
             # 确认订单状态
-            time.sleep(2)  # 等待5秒钟以确保订单被处理
+            time.sleep(10)  # 等待10秒钟以确保订单被处理
             margin_order_status = self.get_order_status(instId=token + "-USDT", ordId=margin_order_id)
             swap_order_status = self.get_order_status(instId=token + "-USDT-SWAP", ordId=swap_order_id)
 
             if margin_order_status == 'filled' and swap_order_status == 'filled':
+                print(f"Both orders for {token} filled successfully.")
                 return True
             else:
-                # 如果一个订单被完全执行，而另一个订单未被执行，则撤销未执行的订单，并平仓已执行的订单
+                print(f"Order status check failed for {token}: Margin order status: {margin_order_status}, Swap order status: {swap_order_status}")
                 if margin_order_status == 'filled' and swap_order_status != 'filled':
-                    time.sleep(5)
                     self.cancel_order(instId=token + "-USDT-SWAP", ordId=swap_order_id)
-                    self.close_position(instId=token + "-USDT", tdMode="cross", side="sell", posSide="net", sz=amount * contract_value)
+                    self.close_position(instId=token + "-USDT", mgnMode="cross", ccy="USDT", posSide="net")
                 if swap_order_status == 'filled' and margin_order_status != 'filled':
-                    time.sleep(5)
                     self.cancel_order(instId=token + "-USDT", ordId=margin_order_id)
-                    self.close_position(instId=token + "-USDT-SWAP", tdMode="cross", side="buy", posSide="long", sz=amount)
-                print(f"Order status check failed: Margin order status: {margin_order_status}, Swap order status: {swap_order_status}")
+                    self.close_position(instId=token + "-USDT-SWAP", mgnMode="cross", ccy="USDT", posSide=self.tradeAPI.get_order(instId=token + "-USDT-SWAP", ordId=swap_order_id)["data"][0]["posSide"])
                 return False
 
         except Exception as e:
