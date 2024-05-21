@@ -54,31 +54,43 @@ def execute_trade_strategy():
                 continue
             print(f"Current pairs count: {current_pairs}")
 
-            # 获取可套利的套利对
-            results = []
-            for token in token_list:
-                arbitrage_info = arbitrage_checker.check_arbitrage(token)
-                if arbitrage_info:
-                    results.append(arbitrage_info)
-            if not results:
-                print("No arbitrage opportunities found. Retrying in 1 minute.")
-                time.sleep(60)
-                continue
+            # # 获取可套利的套利对
+            # results = []
+            # for token in token_list:
+            #     arbitrage_info = arbitrage_checker.check_arbitrage(token)
+            #     if arbitrage_info:
+            #         results.append(arbitrage_info)
+            # if not results:
+            #     print("No arbitrage opportunities found. Retrying in 1 minute.")
+            #     time.sleep(60)
+            #     continue
 
-            arbitrage_set = pd.DataFrame(results, columns=["Token", "Difference", "Type", "ContractValue"])
+            data = {
+                "Token": ["BTC", "ETH", "XRP", "LTC", "ADA"],
+                "Difference": [0.05, 0.03, 0.07, 0.02, 0.04],
+                "Type": ["positive", "negative", "positive", "negative", "positive"],
+                "ContractValue": [0.001, 0.01, 100, 0.001, 1]
+            }
+
+            # Create the DataFrame
+            arbitrage_set = pd.DataFrame(data, columns=["Token", "Difference", "Type", "ContractValue"])
+
+            # arbitrage_set = pd.DataFrame(results, columns=["Token", "Difference", "Type", "ContractValue"])
             portfolio = arbitrage_set.sort_values(by="Difference", ascending=False)
             print(portfolio)
 
             executed_pairs = set(position_monitor.current_pairs)  # 获取当前已执行的套利对
             print(f"Executed pairs: {executed_pairs}")
+            print(portfolio)
+            portion_size = cash_balance / 5
+            for a in executed_pairs:
+                basetoken = a[0].split('-')[0]
+                if basetoken in portfolio['Token'].values:
+                    portfolio = portfolio[portfolio['Token'] != basetoken]
 
             for index, row in portfolio.iterrows():
                 if current_pairs >= 4:
                     break
-
-                token_pair = (row['Token'], row['Type'])
-                if token_pair in executed_pairs:
-                    continue
 
                 mode = row['Type']
                 token_info = arbitrage_checker.get_token_info(row['Token'])
@@ -86,22 +98,20 @@ def execute_trade_strategy():
                     print(f"Failed to get token info for {row['Token']}. Skipping this token.")
                     continue
 
-                portion_size = cash_balance / (4 - current_pairs)
                 success = trade_executor.execute_arbitrage_trade(
                     row['Token'], mode, portion_size, token_info, row['ContractValue']
                 )
                 if success:
-                    executed_pairs.add(token_pair)  # 将已执行的套利对加入已执行集合
                     current_pairs += 1  # 更新持仓对个数
-                    print(f"Executed trade: {token_pair}, new current pairs count: {current_pairs}")
+                    print(f"Executed trade on {row['Token']}, new current pairs count: {current_pairs}")
                 else:
-                    print(f"Failed to execute trade: {token_pair}")
-
-            time.sleep(10)
+                    print(f"Failed to execute trade on {row['Token']}")
 
         except Exception as e:
             print(f"An error occurred: {e}. Retrying in 1 minute.")
             time.sleep(30)
+
+def close_arbitrage
 
 if __name__ == "__main__":
     # 启动持仓监控器

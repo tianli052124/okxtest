@@ -6,6 +6,7 @@ import hashlib
 import base64
 import pandas as pd
 import threading
+from queue import Queue
 
 
 class PositionMonitor:
@@ -21,10 +22,15 @@ class PositionMonitor:
         self.public_ws_url = "wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999"
         self.private_ws = None
         self.public_ws = None
-        self.retry_attempts = 5  # 重试次数
-        self.retry_delay = 5  # 重试间隔时间（秒）
-        self.heartbeat_interval = 25  # 心跳间隔时间（秒）
+        self.retry_attempts = 10  # Number of retry attempts
+        self.retry_delay = 5  # Delay between retry attempts in seconds
+        self.heartbeat_interval = 25  # Heartbeat interval in seconds
         self.heartbeat_timer = None
+
+        self.message_queue = Queue()
+        self.processing_thread = threading.Thread(target=self.process_message_queue)
+        self.processing_thread.daemon = True
+        self.processing_thread.start()
 
     def authenticate(self, ws):
         timestamp = str(int(time.time()))
@@ -58,20 +64,25 @@ class PositionMonitor:
         ws.send(json.dumps(sub_data))
 
     def update_positions(self, message):
-        new_positions = pd.DataFrame(columns=['instId', 'instType', 'realizedPnl', 'upl', 'fundingRate'])
+        print(message)
+        new_positions = pd.DataFrame(message['data'], columns=['instId', 'instType', 'realizedPnl', 'upl'])
+        new_positions['fundingRate'] = None
 
-        for pos in message['data']:
-            instId, instType, realizedPnl, upl = pos['instId'], pos['instType'], pos['realizedPnl'], pos['upl']
-            new_positions = new_positions.append({'instId': instId, 'instType': instType,
-                                                  'realizedPnl': realizedPnl, 'upl': upl, 'fundingRate': None},
-                                                 ignore_index=True)
+        for instId in new_positions['instId']:
+            if instId not in self.subscribed_instruments:
+                self.subscribe_funding_rate(self.public_ws, instId)
+                self.subscribed_instruments.add(instId)
+                print(f"Subscribed to funding rate for instrument {instId}")
 
-        if new_positions.empty:
+        self.positions_df = new_positions
+
+        if self.positions_df.empty:
             print("All positions have been closed.")
         else:
-            self.positions_df = self.positions_df.append(new_positions, ignore_index=True)
+            print("Updated positions DataFrame:")
 
-        self.check_new_pairs()
+        # Unsubscribe from old instruments
+        self.unsubscribe_from_old_instruments()
 
     def unsubscribe_from_old_instruments(self):
         instruments_to_unsubscribe = self.subscribed_instruments.difference(set(self.positions_df['instId'].values))
@@ -97,30 +108,39 @@ class PositionMonitor:
                 self.current_pairs.append((positions['margin'], positions['swap']))
 
     def get_current_pairs_count(self):
+        self.check_new_pairs()
         return len(self.current_pairs)
 
     def on_private_message(self, ws, message):
         message = json.loads(message)
-        self.reset_heartbeat_timer(ws)
-        if message.get('event') == 'login' and message.get('code') == '0':
-            print("Private WebSocket login successful")
-            self.subscribe_positions(ws)
-        elif message.get('event') == 'subscribe':
-            print(f"Subscribed to: {message.get('arg')}")
-        elif 'arg' in message and message['arg']['channel'] == 'positions':
-            self.update_positions(message)
+        self.message_queue.put(("private", message))
 
     def on_public_message(self, ws, message):
         message = json.loads(message)
-        self.reset_heartbeat_timer(ws)
-        if 'arg' in message and message['arg']['channel'] == 'funding-rate' and 'data' in message:
-            for data in message['data']:
-                instId, fundingRate = data['instId'], data['fundingRate']
-                if instId and fundingRate:
-                    self.positions_df.loc[self.positions_df['instId'] == instId, 'fundingRate'] = fundingRate
-                    print(f"Updated funding rate for instrument {instId}: {fundingRate}")
-                    print("Updated positions DataFrame:")
-                    print(self.positions_df)
+        self.message_queue.put(("public", message))
+
+    def process_message_queue(self):
+        while True:
+            msg_type, message = self.message_queue.get()
+            if msg_type == "private":
+                self.reset_heartbeat_timer(self.private_ws)
+                if message.get('event') == 'login' and message.get('code') == '0':
+                    print("Private WebSocket login successful")
+                    self.subscribe_positions(self.private_ws)
+                elif message.get('event') == 'subscribe':
+                    print(f"Subscribed to: {message.get('arg')}")
+                elif 'arg' in message and message['arg']['channel'] == 'positions':
+                    self.update_positions(message)
+            elif msg_type == "public":
+                self.reset_heartbeat_timer(self.public_ws)
+                if 'arg' in message and message['arg']['channel'] == 'funding-rate' and 'data' in message:
+                    for data in message['data']:
+                        instId, fundingRate = data['instId'], data['fundingRate']
+                        if instId and fundingRate:
+                            self.positions_df.loc[self.positions_df['instId'] == instId, 'fundingRate'] = fundingRate
+                            print(f"Updated funding rate for instrument {instId}: {fundingRate}")
+                            print("Updated positions DataFrame:")
+                            print(self.positions_df)
 
     def on_error(self, ws, error):
         print(f"Error: {error}")

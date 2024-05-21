@@ -18,7 +18,11 @@ flag = config['SETTINGS']['flag']
 # 初始化交易执行器
 trade_executor = TradeExecutor(api_key, secret_key, passphrase, flag)
 
-# 初始化持仓监控器
+# # 初始化持仓监控器
 position_monitor = PositionMonitor(api_key, secret_key, passphrase, flag)
 
 position_monitor.start()
+
+time.sleep(30)
+position_monitor.check_new_pairs()
+print(position_monitor.current_pairs)
