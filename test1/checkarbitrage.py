@@ -50,13 +50,13 @@ class ArbitrageChecker:
             return None
 
         feerate = float(inst_rate["data"][0]["fundingRate"])
-        mark_price = float(
-            self.publicdataAPI.get_mark_price(instType="SWAP", instFamily=f"{token}-USDT")["data"][0]["markPx"])
+        swap_price = float(
+            self.marketdataAPI.get_ticker(f"{token}-USDT-SWAP")["data"][0]["last"])
         spot_price = float(self.marketdataAPI.get_ticker(instId=f"{token}-USDT")["data"][0]["last"])
         ct_val = float(
             self.publicdataAPI.get_instruments(instType="SWAP", instFamily=f"{token}-USDT")["data"][0]["ctVal"])
 
-        token_info = (token, feerate, mark_price, spot_price, ct_val)
+        token_info = (token, feerate, swap_price, spot_price, ct_val)
         self.cache[cache_key] = {'data': token_info, 'timestamp': time.time()}
         return token_info
 
@@ -67,19 +67,19 @@ class ArbitrageChecker:
         if not token_info:
             return None
 
-        token, feerate, mark_price, spot_price, ct_val = token_info
+        token, feerate, swap_price, spot_price, ct_val = token_info
 
-        if feerate > threshold_funding_rate and mark_price / spot_price > 1.001:
-            diff = mark_price * feerate - mark_price * fee_rates["swap_taker"] * 2 - spot_price * fee_rates[
-                "spot_taker"] * 2
+        if feerate > threshold_funding_rate and swap_price / spot_price > 1.001:
+            diff = swap_price * feerate - swap_price * fee_rates["swap_maker"] * 2 - spot_price * fee_rates[
+                "spot_maker"] * 2
             if diff > 0:
                 print(f"{token}找到了一个正套标的")
                 return token, diff, "positive", ct_val
 
-        elif feerate < -threshold_funding_rate and spot_price / mark_price > 1.001:
+        elif feerate < -threshold_funding_rate and spot_price / swap_price > 1.001:
             interest_rate = float(self.accountAPI.get_interest_rate(token)["data"][0]["interestRate"])
-            diff = -mark_price * feerate - mark_price * fee_rates["swap_taker"] * 2 - spot_price * fee_rates[
-                "spot_taker"] * 2 - interest_rate / 24 * 4
+            diff = -swap_price * feerate - swap_price * fee_rates["swap_maker"] * 2 - spot_price * fee_rates[
+                "spot_maker"] * 2 - interest_rate / 24 * 4
             if diff > 0:
                 print(f"{token}找到了一个反套标的")
                 return token, diff, "negative", ct_val

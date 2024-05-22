@@ -2,6 +2,7 @@
 
 import okx.Account as Account
 import okx.Trade as Trade
+import okx.MarketData as Market
 import time
 
 class TradeExecutor:
@@ -12,6 +13,7 @@ class TradeExecutor:
         self.flag = flag
         self.accountAPI = Account.AccountAPI(api_key, secret_key, passphrase, False, flag)
         self.tradeAPI = Trade.TradeAPI(api_key, secret_key, passphrase, False, flag)
+        self.marketAPI = Market.MarketAPI(api_key, secret_key, passphrase, False, flag)
 
     def get_cash_balance(self):
         try:
@@ -68,60 +70,109 @@ class TradeExecutor:
             print(f"Error closing position: {e}")
             return None
 
+    def get_liquidity_info(self, instId):
+        try:
+            result = self.marketAPI.get_orderbook(instId=instId)
+            bids = result["data"][0]["bids"]
+            asks = result["data"][0]["asks"]
+            top_bid = float(bids[0][0]) if bids else 0
+            top_ask = float(asks[0][0]) if asks else 0
+            bid_size = float(bids[0][1]) if bids else 0
+            ask_size = float(asks[0][1]) if asks else 0
+            spread = top_ask - top_bid if top_bid and top_ask else float('inf')
+            return top_bid, top_ask, bid_size, ask_size, spread
+        except Exception as e:
+            print(f"Error getting liquidity info: {e}")
+            return None, None, None, None, float('inf')
+
     def execute_arbitrage_trade(self, token, mode, portion_size, token_info, contract_value):
         try:
+            swap_instId = token + "-USDT-SWAP"
+            margin_instId = token + "-USDT"
+
+            swap_bid, swap_ask, swap_bid_size, swap_ask_size, swap_spread = self.get_liquidity_info(swap_instId)
+            margin_bid, margin_ask, margin_bid_size, margin_ask_size, margin_spread = self.get_liquidity_info(margin_instId)
+
             if mode == "negative":
                 max_size = float(
-                    self.accountAPI.get_max_order_size(instId=token + "-USDT", tdMode="cross", ccy="USDT")["data"][0]["maxSell"]
+                    self.accountAPI.get_max_order_size(instId=margin_instId, tdMode="cross", ccy="USDT")["data"][0]["maxSell"]
                 )
                 if max_size == 0:
                     print(f"Max size for selling {token} is zero. Skipping this token.")
                     return False
                 amount = round(min(portion_size / token_info[3], max_size) / contract_value, 0)
-                self.set_leverage(instId=token + "-USDT-SWAP", lever=3)
-                self.set_leverage(instId=token + "-USDT", lever=3)
+                self.set_leverage(instId=swap_instId, lever=3)
+                self.set_leverage(instId=margin_instId, lever=3)
 
-                margin_order_id = self.place_order(instId=token + "-USDT", ccy="USDT", tdMode="cross", side="sell",
-                                                   ordType="market", sz=amount * contract_value, tgtCcy="base_ccy")
-                if not margin_order_id:
-                    print(f"Failed to place margin order for selling {token}")
-                    return False
+                if swap_spread > margin_spread:
+                    swap_order_id = self.place_order(instId=swap_instId, tdMode="cross", side="buy",
+                                                     posSide="long", ordType="limit", sz=amount, px=swap_ask)
+                    if not swap_order_id:
+                        print(f"Failed to place swap order for buying {token}")
+                        return False
 
-                swap_order_id = self.place_order(instId=token + "-USDT-SWAP", tdMode="cross", side="buy",
-                                                 posSide="long", ordType="market", sz=amount)
-                if not swap_order_id:
-                    print(f"Failed to place swap order for buying {token}")
-                    self.cancel_order(instId=token + "-USDT", ordId=margin_order_id)
-                    return False
+                    margin_order_id = self.place_order(instId=margin_instId, ccy="USDT", tdMode="cross", side="sell",
+                                                       ordType="limit", sz=amount * contract_value, px=margin_bid, tgtCcy="base_ccy")
+                    if not margin_order_id:
+                        print(f"Failed to place margin order for selling {token}")
+                        self.cancel_order(instId=swap_instId, ordId=swap_order_id)
+                        return False
+                else:
+                    margin_order_id = self.place_order(instId=margin_instId, ccy="USDT", tdMode="cross", side="sell",
+                                                       ordType="limit", sz=amount * contract_value, px=margin_bid, tgtCcy="base_ccy")
+                    if not margin_order_id:
+                        print(f"Failed to place margin order for selling {token}")
+                        return False
+
+                    swap_order_id = self.place_order(instId=swap_instId, tdMode="cross", side="buy",
+                                                     posSide="long", ordType="limit", sz=amount, px=swap_ask)
+                    if not swap_order_id:
+                        print(f"Failed to place swap order for buying {token}")
+                        self.cancel_order(instId=margin_instId, ordId=margin_order_id)
+                        return False
 
             else:
                 max_size = float(
-                    self.accountAPI.get_max_order_size(instId=token + "-USDT", tdMode="cross", ccy="USDT")["data"][0]["maxBuy"]
+                    self.accountAPI.get_max_order_size(instId=margin_instId, tdMode="cross", ccy="USDT")["data"][0]["maxBuy"]
                 )
                 if max_size == 0:
                     print(f"Max size for buying {token} is zero. Skipping this token.")
                     return False
                 amount = round(min(portion_size / token_info[3], max_size) / contract_value, 0)
-                self.set_leverage(instId=token + "-USDT-SWAP", lever=3)
-                self.set_leverage(instId=token + "-USDT", lever=3)
+                self.set_leverage(instId=swap_instId, lever=3)
+                self.set_leverage(instId=margin_instId, lever=3)
 
-                margin_order_id = self.place_order(instId=token + "-USDT", ccy="USDT", tdMode="cross", side="buy",
-                                                   ordType="limit", sz=amount * contract_value, px=token_info[3])
-                if not margin_order_id:
-                    print(f"Failed to place margin order for buying {token}")
-                    return False
+                if swap_spread > margin_spread:
+                    swap_order_id = self.place_order(instId=swap_instId, tdMode="cross", side="sell",
+                                                     posSide="short", ordType="limit", sz=amount, px=swap_bid)
+                    if not swap_order_id:
+                        print(f"Failed to place swap order for selling {token}")
+                        return False
 
-                swap_order_id = self.place_order(instId=token + "-USDT-SWAP", tdMode="cross", side="sell",
-                                                 posSide="short", ordType="market", sz=amount)
-                if not swap_order_id:
-                    print(f"Failed to place swap order for selling {token}")
-                    self.cancel_order(instId=token + "-USDT", ordId=margin_order_id)
-                    return False
+                    margin_order_id = self.place_order(instId=margin_instId, ccy="USDT", tdMode="cross", side="buy",
+                                                       ordType="limit", sz=amount * contract_value, px=margin_ask)
+                    if not margin_order_id:
+                        print(f"Failed to place margin order for buying {token}")
+                        self.cancel_order(instId=swap_instId, ordId=swap_order_id)
+                        return False
+                else:
+                    margin_order_id = self.place_order(instId=margin_instId, ccy="USDT", tdMode="cross", side="buy",
+                                                       ordType="limit", sz=amount * contract_value, px=margin_ask)
+                    if not margin_order_id:
+                        print(f"Failed to place margin order for buying {token}")
+                        return False
 
-            # 确认订单状态
-            time.sleep(10)  # 等待10秒钟以确保订单被处理
-            margin_order_status = self.get_order_status(instId=token + "-USDT", ordId=margin_order_id)
-            swap_order_status = self.get_order_status(instId=token + "-USDT-SWAP", ordId=swap_order_id)
+                    swap_order_id = self.place_order(instId=swap_instId, tdMode="cross", side="sell",
+                                                     posSide="short", ordType="limit", sz=amount, px=swap_bid)
+                    if not swap_order_id:
+                        print(f"Failed to place swap order for selling {token}")
+                        self.cancel_order(instId=margin_instId, ordId=margin_order_id)
+                        return False
+
+            # Confirm order status
+            time.sleep(10)  # Wait 10 seconds to ensure orders are processed
+            margin_order_status = self.get_order_status(instId=margin_instId, ordId=margin_order_id)
+            swap_order_status = self.get_order_status(instId=swap_instId, ordId=swap_order_id)
 
             if margin_order_status == 'filled' and swap_order_status == 'filled':
                 print(f"Both orders for {token} filled successfully.")
@@ -129,11 +180,11 @@ class TradeExecutor:
             else:
                 print(f"Order status check failed for {token}: Margin order status: {margin_order_status}, Swap order status: {swap_order_status}")
                 if margin_order_status == 'filled' and swap_order_status != 'filled':
-                    self.cancel_order(instId=token + "-USDT-SWAP", ordId=swap_order_id)
-                    self.close_position(instId=token + "-USDT", mgnMode="cross", ccy="USDT", posSide="net")
+                    self.cancel_order(instId=swap_instId, ordId=swap_order_id)
+                    self.close_position(instId=margin_instId, mgnMode="cross", ccy="USDT", posSide="net")
                 if swap_order_status == 'filled' and margin_order_status != 'filled':
-                    self.cancel_order(instId=token + "-USDT", ordId=margin_order_id)
-                    self.close_position(instId=token + "-USDT-SWAP", mgnMode="cross", ccy="USDT", posSide=self.tradeAPI.get_order(instId=token + "-USDT-SWAP", ordId=swap_order_id)["data"][0]["posSide"])
+                    self.cancel_order(instId=margin_instId, ordId=margin_order_id)
+                    self.close_position(instId=swap_instId, mgnMode="cross", ccy="USDT", posSide=self.tradeAPI.get_order(instId=swap_instId, ordId=swap_order_id)["data"][0]["posSide"])
                 return False
 
         except Exception as e:

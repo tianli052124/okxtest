@@ -89,7 +89,6 @@ class PositionMonitor:
             print("Received balance and position data")
             posdata = message['data'][0]['posData']
             df = pd.DataFrame(posdata, columns=['instId', 'instType', 'posSide'])
-            print(df)
 
 
     def on_public_message(self, ws, message):
@@ -174,5 +173,5 @@ position_monitor = PositionMonitor(api_key, secret_key, passphrase, flag)
 
 position_monitor.start()
 
-time.sleep(30)
+time.sleep(600)
 
