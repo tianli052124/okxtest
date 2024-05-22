@@ -44,7 +44,7 @@ class ArbitrageChecker:
             print(f"{token}未上线")
             return None
 
-        leverage_info = self.accountAPI.set_leverage(instId=f"{token}-USDT", lever="5", mgnMode="cross")
+        leverage_info = self.accountAPI.set_leverage(instId=f"{token}-USDT", lever="3", mgnMode="cross")
         if leverage_info["code"] == "54000":
             print(f"{token}不支持杠杆")
             return None

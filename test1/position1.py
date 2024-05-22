@@ -1,3 +1,5 @@
+# position1.py
+
 import websocket
 import json
 import time
@@ -15,7 +17,7 @@ class PositionMonitor:
         self.secret_key = secret_key
         self.passphrase = passphrase
         self.flag = flag
-        self.positions_df = pd.DataFrame(columns=['instId', 'instType', 'realizedPnl', 'upl', 'fundingRate'])
+        self.positions_df = pd.DataFrame(columns=['instId', 'instType', 'realizedPnl', 'upl', 'fundingRate', 'posSide'])
         self.subscribed_instruments = set()
         self.current_pairs = []
         self.private_ws_url = "wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999"
@@ -59,13 +61,9 @@ class PositionMonitor:
         sub_data = {"op": "subscribe", "args": [{"channel": "funding-rate", "instId": instId}]}
         ws.send(json.dumps(sub_data))
 
-    def unsubscribe_funding_rate(self, ws, instId):
-        sub_data = {"op": "unsubscribe", "args": [{"channel": "funding-rate", "instId": instId}]}
-        ws.send(json.dumps(sub_data))
-
     def update_positions(self, message):
         print(message)
-        new_positions = pd.DataFrame(message['data'], columns=['instId', 'instType', 'realizedPnl', 'upl'])
+        new_positions = pd.DataFrame(message['data'], columns=['instId', 'instType', 'realizedPnl', 'upl', 'posSide'])
         new_positions['fundingRate'] = None
 
         for instId in new_positions['instId']:
@@ -79,36 +77,32 @@ class PositionMonitor:
         if self.positions_df.empty:
             print("All positions have been closed.")
         else:
-            print("Updated positions DataFrame:")
+            print(f"the current positions are:{self.positions_df}")
 
-        # Unsubscribe from old instruments
-        self.unsubscribe_from_old_instruments()
+        self.check_pairs()
 
-    def unsubscribe_from_old_instruments(self):
-        instruments_to_unsubscribe = self.subscribed_instruments.difference(set(self.positions_df['instId'].values))
-        for instId in instruments_to_unsubscribe:
-            self.unsubscribe_funding_rate(self.public_ws, instId)
-            self.subscribed_instruments.remove(instId)
-            print(f"Unsubscribed from funding rate for instrument {instId}")
-
-    def check_new_pairs(self):
-        self.current_pairs.clear()
+    def check_pairs(self):
+        currentpairs = []
         token_positions = {}
         for _, row in self.positions_df.iterrows():
             base_token = row['instId'].split('-')[0]
             if base_token not in token_positions:
-                token_positions[base_token] = {'margin': None, 'swap': None}
+                token_positions[base_token] = {'margin': None, 'swap': None, 'posSide': None}
             if row['instType'] == 'MARGIN':
                 token_positions[base_token]['margin'] = row['instId']
             elif row['instType'] == 'SWAP':
                 token_positions[base_token]['swap'] = row['instId']
+                token_positions[base_token]['posSide'] = row['posSide']
 
         for base_token, positions in token_positions.items():
             if positions['margin'] and positions['swap']:
-                self.current_pairs.append((positions['margin'], positions['swap']))
+                mode = 'negative' if positions['posSide'] == 'long' else 'positive'
+                currentpairs.append((base_token, mode))
+
+        self.current_pairs = currentpairs
 
     def get_current_pairs_count(self):
-        self.check_new_pairs()
+        self.check_pairs()
         return len(self.current_pairs)
 
     def on_private_message(self, ws, message):

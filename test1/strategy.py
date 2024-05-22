@@ -47,12 +47,16 @@ def execute_trade_strategy():
                 continue
 
             # 检查现有持仓的套利对个数
-            current_pairs = position_monitor.get_current_pairs_count()
-            if current_pairs is None:
+            current_pairs = position_monitor.current_pairs
+            print(current_pairs)
+            numberofpairs = len(current_pairs)
+            if numberofpairs is None:
                 print("Failed to retrieve current pairs count. Retrying in 1 minute.")
                 time.sleep(60)
                 continue
-            print(f"Current pairs count: {current_pairs}")
+            print(f"Current pairs count: {numberofpairs}")
+
+            close_arbitrage()
 
             # # 获取可套利的套利对
             # results = []
@@ -79,17 +83,14 @@ def execute_trade_strategy():
             portfolio = arbitrage_set.sort_values(by="Difference", ascending=False)
             print(portfolio)
 
-            executed_pairs = set(position_monitor.current_pairs)  # 获取当前已执行的套利对
-            print(f"Executed pairs: {executed_pairs}")
-            print(portfolio)
             portion_size = cash_balance / 5
-            for a in executed_pairs:
-                basetoken = a[0].split('-')[0]
+            for a in current_pairs:
+                basetoken = a[0]
                 if basetoken in portfolio['Token'].values:
                     portfolio = portfolio[portfolio['Token'] != basetoken]
 
             for index, row in portfolio.iterrows():
-                if current_pairs >= 4:
+                if numberofpairs >= 3:
                     break
 
                 mode = row['Type']
@@ -101,17 +102,33 @@ def execute_trade_strategy():
                 success = trade_executor.execute_arbitrage_trade(
                     row['Token'], mode, portion_size, token_info, row['ContractValue']
                 )
-                if success:
-                    current_pairs += 1  # 更新持仓对个数
-                    print(f"Executed trade on {row['Token']}, new current pairs count: {current_pairs}")
-                else:
-                    print(f"Failed to execute trade on {row['Token']}")
+
+                numberofpairs = position_monitor.get_current_pairs_count()
 
         except Exception as e:
             print(f"An error occurred: {e}. Retrying in 1 minute.")
             time.sleep(30)
 
-def close_arbitrage
+def close_arbitrage():
+    threshold_funding_rate = 0.00001  # Define your threshold funding rate here
+    current_pairs = position_monitor.current_pairs  # Assuming this function returns a set of current pairs
+
+    for pair in current_pairs:
+        token = pair[0]  # Extract the token name from the pair
+        mode = pair[1]
+        token_info = arbitrage_checker.get_token_info(token)
+        if not token_info:
+            continue
+        _, feerate, _, _, _ = token_info
+
+        if abs(feerate) < threshold_funding_rate:
+            if mode == 'positive':
+                trade_executor.close_position(token+"-USDT-SWAP", 'cross', 'USDT', 'long')
+                trade_executor.close_position(token+"-USDT", 'cross', 'USDT', 'net')
+            if mode == 'negative':
+                trade_executor.close_position(token+"-USDT-SWAP", 'cross', 'USDT', 'short')
+                trade_executor.close_position(token+"-USDT", 'cross', 'USDT', 'net')
+
 
 if __name__ == "__main__":
     # 启动持仓监控器
