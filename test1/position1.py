@@ -62,8 +62,8 @@ class PositionMonitor:
         ws.send(json.dumps(sub_data))
 
     def update_positions(self, message):
-        print(message)
-        new_positions = pd.DataFrame(message['data'], columns=['instId', 'instType', 'realizedPnl', 'upl', 'posSide'])
+        print('update_positions', message)
+        new_positions = pd.DataFrame(message['data'], columns=['instId', 'instType', 'realizedPnl', 'upl', 'posSide', 'pos'])
         new_positions['fundingRate'] = None
 
         for instId in new_positions['instId']:
@@ -72,12 +72,21 @@ class PositionMonitor:
                 self.subscribed_instruments.add(instId)
                 print(f"Subscribed to funding rate for instrument {instId}")
 
-        self.positions_df = new_positions
+        # 将新的仓位信息拼接到 self.positions_df 中
+        self.positions_df = pd.concat([self.positions_df, new_positions])
+
+        # 删除平仓的记录
+        closed_positions = new_positions[new_positions['pos'] == '0']['instId']
+        self.positions_df = self.positions_df[~self.positions_df['instId'].isin(closed_positions)]
+
+        # 根据 'instId' 和 'posSide' 去重，保留最新的记录
+        self.positions_df = self.positions_df.sort_values(by=['instId', 'posSide', 'upl'], ascending=[True, True, False])
+        self.positions_df = self.positions_df.drop_duplicates(subset=['instId', 'posSide'], keep='first')
 
         if self.positions_df.empty:
             print("All positions have been closed.")
         else:
-            print(f"the current positions are:{self.positions_df}")
+            print(f"The current positions are: \n{self.positions_df}")
 
         self.check_pairs()
 
