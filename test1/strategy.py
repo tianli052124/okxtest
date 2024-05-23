@@ -39,6 +39,7 @@ token_list = ['BTC', 'ETH', 'SOL', 'DOGE', 'PEPE', 'ORDI', 'LTC', 'XRP', 'BCH', 
 def execute_trade_strategy():
     while True:
         try:
+            time.sleep(10)
             # 获取当前现金余额
             cash_balance = trade_executor.get_cash_balance()
             if cash_balance is None:
@@ -48,7 +49,6 @@ def execute_trade_strategy():
 
             # 检查现有持仓的套利对个数
             current_pairs = position_monitor.current_pairs
-            print(current_pairs)
             numberofpairs = len(current_pairs)
             if numberofpairs is None:
                 print("Failed to retrieve current pairs count. Retrying in 1 minute.")
@@ -81,7 +81,6 @@ def execute_trade_strategy():
 
             # arbitrage_set = pd.DataFrame(results, columns=["Token", "Difference", "Type", "ContractValue"])
             portfolio = arbitrage_set.sort_values(by="Difference", ascending=False)
-            print(portfolio)
 
             portion_size = cash_balance / 5
             for a in current_pairs:
@@ -103,11 +102,13 @@ def execute_trade_strategy():
                     row['Token'], mode, portion_size, token_info, row['ContractValue']
                 )
 
-                numberofpairs = position_monitor.get_current_pairs_count()
+                if success:
+                    numberofpairs += 1
 
         except Exception as e:
             print(f"An error occurred: {e}. Retrying in 1 minute.")
             time.sleep(30)
+
 
 def close_arbitrage():
     threshold_funding_rate = 0.00001  # Define your threshold funding rate here

@@ -19,7 +19,6 @@ class TradeExecutor:
         try:
             result = self.accountAPI.get_account_balance()
             cash_balance = float(result["data"][0]["details"][0]["cashBal"])
-            print(f"Cash balance: {cash_balance}")
             return cash_balance
         except Exception as e:
             print(f"Error getting cash balance: {e}")
@@ -170,7 +169,7 @@ class TradeExecutor:
                         return False
 
             # Confirm order status
-            time.sleep(10)  # Wait 10 seconds to ensure orders are processed
+            time.sleep(8)  # Wait 10 seconds to ensure orders are processed
             margin_order_status = self.get_order_status(instId=margin_instId, ordId=margin_order_id)
             swap_order_status = self.get_order_status(instId=swap_instId, ordId=swap_order_id)
 

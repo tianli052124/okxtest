@@ -17,7 +17,7 @@ class PositionMonitor:
         self.secret_key = secret_key
         self.passphrase = passphrase
         self.flag = flag
-        self.positions_df = pd.DataFrame(columns=['instId', 'instType', 'realizedPnl', 'upl', 'fundingRate', 'posSide'])
+        self.positions_df = pd.DataFrame(columns=['instId', 'instType', 'pos', 'posSide', 'fundingRate'])
         self.subscribed_instruments = set()
         self.current_pairs = []
         self.private_ws_url = "wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999"
@@ -57,27 +57,60 @@ class PositionMonitor:
         sub_data = {"op": "subscribe", "args": [{"channel": "positions", "instType": "ANY"}]}
         ws.send(json.dumps(sub_data))
 
+    def unsubscribe_funding_rate(self, ws, instId):
+        sub_data = {"op": "unsubscribe", "args": [{"channel": "funding-rate", "instId": instId}]}
+        ws.send(json.dumps(sub_data))
+
     def subscribe_funding_rate(self, ws, instId):
         sub_data = {"op": "subscribe", "args": [{"channel": "funding-rate", "instId": instId}]}
         ws.send(json.dumps(sub_data))
 
     def update_positions(self, message):
         print(message)
-        new_positions = pd.DataFrame(message['data'], columns=['instId', 'instType', 'realizedPnl', 'upl', 'posSide'])
+        new_positions = pd.DataFrame(message['data'],
+                                     columns=['instId', 'instType', 'posSide', 'pos'])
         new_positions['fundingRate'] = None
 
-        for instId in new_positions['instId']:
-            if instId not in self.subscribed_instruments:
-                self.subscribe_funding_rate(self.public_ws, instId)
-                self.subscribed_instruments.add(instId)
-                print(f"Subscribed to funding rate for instrument {instId}")
+        # Ensure the positions_df has the 'pos' column, and 'fundingRate' is not reset
+        if 'fundingRate' not in self.positions_df.columns:
+            self.positions_df['fundingRate'] = None
+        if 'pos' not in self.positions_df.columns:
+            self.positions_df['pos'] = None
 
-        self.positions_df = new_positions
+        # Update existing positions with new data
+        for _, new_position in new_positions.iterrows():
+            instId = new_position['instId']
+            pos = new_position['pos']
+
+            if pos == '0':
+                # Remove positions where pos is 0
+                self.positions_df = self.positions_df[self.positions_df['instId'] != instId]
+                self.unsubscribe_funding_rate(self.public_ws, instId)
+                self.subscribed_instruments.remove(instId)
+            else:
+                if instId in self.positions_df['instId'].values:
+                    # Update existing row
+                    self.positions_df.loc[
+                        self.positions_df['instId'] == instId, ['instType', 'posSide', 'pos']] = \
+                    new_position[['instType', 'posSide', 'pos']].values
+                else:
+                    # Add new row
+                    self.positions_df = pd.concat([self.positions_df, pd.DataFrame([new_position])], ignore_index=True)
+                    self.positions_df.loc[self.positions_df['instId'] == instId, 'fundingRate'] = None
+
+                # Subscribe to funding rate if not already subscribed
+                if instId not in self.subscribed_instruments:
+                    self.subscribe_funding_rate(self.public_ws, instId)
+                    self.subscribed_instruments.add(instId)
+                    print(f"Subscribed to funding rate for instrument {instId}")
+
+        # Clean up positions with pos == '0'
+        self.positions_df = self.positions_df[self.positions_df['pos'] != '0']
 
         if self.positions_df.empty:
             print("All positions have been closed.")
         else:
-            print(f"the current positions are:{self.positions_df}")
+            print(f"Current positions:\n{self.positions_df}")
 
         self.check_pairs()
 
