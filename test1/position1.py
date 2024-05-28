@@ -237,3 +237,14 @@ class PositionMonitor:
         public_ws_thread.start()
 
         print("Position monitoring started.")
+
+if __name__ == "__main__":
+    api_key = "e1b9fa18-438f-4186-8679-2e1a31cac369"
+    secret = "ED6A1408691C36597446782AA57D8BC3"
+    passphrase = "Llz0102!!"
+    flag = "1"
+    position_monitor = PositionMonitor(api_key, secret, passphrase, flag)
+
+    position_monitor.start()
+
+    time.sleep(600)

@@ -174,4 +174,3 @@ position_monitor = PositionMonitor(api_key, secret_key, passphrase, flag)
 position_monitor.start()
 
 time.sleep(600)
-
