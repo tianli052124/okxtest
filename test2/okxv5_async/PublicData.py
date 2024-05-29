@@ -1,5 +1,6 @@
 from .client import OkxClient
 from .consts import *
+from .RateLimiter import RateLimiter
 
 
 class PublicAPI(OkxClient):
@@ -8,9 +9,11 @@ class PublicAPI(OkxClient):
         OkxClient.__init__(self, api_key, api_secret_key, passphrase, use_server_time, flag, domain, debug, proxy)
 
     # Get Instruments
+    GET_INSTRUMENTS_SEMAPHORE = RateLimiter(20, 2)
     async def get_instruments(self, instType, uly='', instId='',instFamily = ''):
         params = {'instType': instType, 'uly': uly, 'instId': instId,'instFamily':instFamily}
-        return await self._request_with_params(GET, INSTRUMENT_INFO, params)
+        async with self.GET_INSTRUMENTS_SEMAPHORE:
+            return await self._request_with_params(GET, INSTRUMENT_INFO, params)
 
     # Get Delivery/Exercise History
     async def get_delivery_exercise_history(self, instType, uly = '', after='', before='', limit='',instFamily = ''):
@@ -23,9 +26,11 @@ class PublicAPI(OkxClient):
         return await self._request_with_params(GET, OPEN_INTEREST, params)
 
     # Get Funding Rate
+    GET_FUNDING_RATE_SEMAPHORE = RateLimiter(20, 2)
     async def get_funding_rate(self, instId):
         params = {'instId': instId}
-        return await self._request_with_params(GET, FUNDING_RATE, params)
+        async with self.GET_FUNDING_RATE_SEMAPHORE:
+            return await self._request_with_params(GET, FUNDING_RATE, params)
 
     # Get Funding Rate History
     async def funding_rate_history(self, instId, after='', before='', limit=''):
@@ -57,9 +62,11 @@ class PublicAPI(OkxClient):
         return await self._request_without_params(GET, SYSTEM_TIME)
 
     # Get Mark Price
+    GET_MARK_PRICE_SEMAPHORE = RateLimiter(20, 2)
     async def get_mark_price(self, instType, uly='', instId='',instFamily = ''):
         params = {'instType': instType, 'uly': uly, 'instId': instId,'instFamily':instFamily}
-        return await self._request_with_params(GET, MARK_PRICE, params)
+        async with self.GET_MARK_PRICE_SEMAPHORE:
+            return await self._request_with_params(GET, MARK_PRICE, params)
 
     # Get Tier
     async def get_position_tiers(self, instType, tdMode, uly='', instId='', ccy='', tier='',instFamily =''):

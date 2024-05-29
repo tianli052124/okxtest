@@ -1,7 +1,7 @@
 import json
-
 from .client import OkxClient
 from .consts import *
+from .RateLimiter import RateLimiter
 
 
 class TradeAPI(OkxClient):
@@ -11,6 +11,7 @@ class TradeAPI(OkxClient):
         OkxClient.__init__(self, api_key, api_secret_key, passphrase, use_server_time, flag, domain, debug, proxy)
 
     # Place Order
+    PLACR_ORDER_SEMAPHORE = RateLimiter(60, 2)
     async def place_order(self, instId, tdMode, side, ordType, sz, ccy='', clOrdId='', tag='', posSide='', px='',
                     reduceOnly='', tgtCcy='', tpTriggerPx='', tpOrdPx='', slTriggerPx='', slOrdPx='',
                     tpTriggerPxType='', slTriggerPxType='', quickMgnType='', stpId='', stpMode='',
@@ -21,18 +22,25 @@ class TradeAPI(OkxClient):
                   'slOrdPx': slOrdPx, 'tpTriggerPxType': tpTriggerPxType, 'slTriggerPxType': slTriggerPxType,
                   'quickMgnType': quickMgnType, 'stpId': stpId, 'stpMode': stpMode}
         params['attachAlgoOrds'] = attachAlgoOrds
-        return await self._request_with_params(POST, PLACR_ORDER, params)
+        async with self.PLACR_ORDER_SEMAPHORE:
+            return await self._request_with_params(POST, PLACR_ORDER, params)
 
     # Place Multiple Orders
+
+    BATCH_ORDER_SEMAPHORE = RateLimiter(15, 2)
     async def place_multiple_orders(self, orders_data):
-        return await self._request_with_params(POST, BATCH_ORDERS, orders_data)
+        async with self.BATCH_ORDER_SEMAPHORE:
+            return await self._request_with_params(POST, BATCH_ORDERS, orders_data)
 
     # Cancel Order
+    CANCEL_ORDER_SEMAPHORE = RateLimiter(60, 2)
     async def cancel_order(self, instId, ordId='', clOrdId=''):
         params = {'instId': instId, 'ordId': ordId, 'clOrdId': clOrdId}
-        return await self._request_with_params(POST, CANCEL_ORDER, params)
+        async with self.CANCEL_ORDER_SEMAPHORE:
+            return await self._request_with_params(POST, CANCEL_ORDER, params)
 
     # Cancel Multiple Orders
+    BATCH_CANCEL_SEMAPHORE = RateLimiter(15, 2)
     async def cancel_multiple_orders(self, orders_data):
         return await self._request_with_params(POST, CANCEL_BATCH_ORDERS, orders_data)
 

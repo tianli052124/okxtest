@@ -2,6 +2,7 @@ import asyncio
 
 from .client import OkxClient
 from .consts import *
+from .RateLimiter import RateLimiter
 
 
 class AccountAPI(OkxClient):
@@ -16,16 +17,20 @@ class AccountAPI(OkxClient):
             params['instType'] = instType
         return await self._request_with_params(GET, POSITION_RISK, params)
 
+    ACCOUNT_BALANCE_SEMAPHORE = RateLimiter(10, 2)
     async def get_account_balance(self, ccy=''):
         params = {}
         if ccy:
             params['ccy'] = ccy
-        return await self._request_with_params(GET, ACCOUNT_INFO, params)
+        async with self.ACCOUNT_BALANCE_SEMAPHORE:
+            return await self._request_with_params(GET, ACCOUNT_INFO, params)
 
     # Get Positions
+    ACCOUNT_POSITIONS_SEMAPHORE = RateLimiter(10, 2)
     async def get_positions(self, instType='', instId=''):
         params = {'instType': instType, 'instId': instId}
-        return await self._request_with_params(GET, POSITION_INFO, params)
+        async with self.ACCOUNT_POSITIONS_SEMAPHORE:
+            return await self._request_with_params(GET, POSITION_INFO, params)
 
     async def position_builder(self, inclRealPosAndEq=False, spotOffsetType=None, greeksType=None, simPos=None,
                                simAsset=None):
@@ -62,20 +67,24 @@ class AccountAPI(OkxClient):
     async def get_account_config(self):
         return await self._request_without_params(GET, ACCOUNT_CONFIG)
 
-    # Get Account Configuration
+    # Set Position Mode
     async def set_position_mode(self, posMode):
         params = {'posMode': posMode}
         return await self._request_with_params(POST, POSITION_MODE, params)
 
-    # Get Account Configuration
+    # Set Leverage
+    ACCOUNT_LEVERAGE_SEMAPHORE = RateLimiter(20, 2)
     async def set_leverage(self, lever, mgnMode, instId='', ccy='', posSide=''):
         params = {'lever': lever, 'mgnMode': mgnMode, 'instId': instId, 'ccy': ccy, 'posSide': posSide}
-        return await self._request_with_params(POST, SET_LEVERAGE, params)
+        async with self.ACCOUNT_LEVERAGE_SEMAPHORE:
+            return await self._request_with_params(POST, SET_LEVERAGE, params)
 
     # Get Maximum Tradable Size For Instrument
+    MAX_SIZE_SEMAPHORE = RateLimiter(20, 2)
     async def get_max_order_size(self, instId, tdMode, ccy='', px=''):
         params = {'instId': instId, 'tdMode': tdMode, 'ccy': ccy, 'px': px}
-        return await self._request_with_params(GET, MAX_TRADE_SIZE, params)
+        async with self.MAX_SIZE_SEMAPHORE:
+            return await self._request_with_params(GET, MAX_TRADE_SIZE, params)
 
     # Get Maximum Available Tradable Amount
     async def get_max_avail_size(self, instId, tdMode, ccy='', reduceOnly='', unSpotOffset='', quickMgnType=''):
@@ -89,9 +98,11 @@ class AccountAPI(OkxClient):
         return await self._request_with_params(POST, ADJUSTMENT_MARGIN, params)
 
     # Get Leverage
+    GET_LEVERAGE_SEMAPHORE = RateLimiter(20, 2)
     async def get_leverage(self, instId, mgnMode):
         params = {'instId': instId, 'mgnMode': mgnMode}
-        return await self._request_with_params(GET, GET_LEVERAGE, params)
+        async with self.GET_LEVERAGE_SEMAPHORE:
+            return await self._request_with_params(GET, GET_LEVERAGE, params)
 
     # Get the maximum loan of isolated MARGIN
     async def get_max_loan(self, instId, mgnMode, mgnCcy):
@@ -99,9 +110,11 @@ class AccountAPI(OkxClient):
         return await self._request_with_params(GET, MAX_LOAN, params)
 
     # Get Fee Rates
+    FEE_RATES_SEMAPHORE = RateLimiter(5, 2)
     async def get_fee_rates(self, instType, instId='', uly='', category='', instFamily=''):
         params = {'instType': instType, 'instId': instId, 'uly': uly, 'category': category, 'instFamily': instFamily}
-        return await self._request_with_params(GET, FEE_RATES, params)
+        async with self.FEE_RATES_SEMAPHORE:
+            return await self._request_with_params(GET, FEE_RATES, params)
 
     # Get interest-accrued
     async def get_interest_accrued(self, instId='', ccy='', mgnMode='', after='', before='', limit=''):
@@ -109,9 +122,11 @@ class AccountAPI(OkxClient):
         return await self._request_with_params(GET, INTEREST_ACCRUED, params)
 
     # Get interest-accrued
+    INTEREST_RATE_SEMAPHORE = RateLimiter(5, 2)
     async def get_interest_rate(self, ccy=''):
         params = {'ccy': ccy}
-        return await self._request_with_params(GET, INTEREST_RATE, params)
+        async with self.INTEREST_RATE_SEMAPHORE:
+            return await self._request_with_params(GET, INTEREST_RATE, params)
 
     # Set Greeks (PA/BS)
     async def set_greeks(self, greeksType):
