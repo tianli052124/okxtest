@@ -63,17 +63,21 @@ class ArbitrageChecker:
             return None
 
         token, feerate, swap_price, spot_price, ct_val = token_info
-
-        if feerate > threshold_funding_rate and swap_price / spot_price > 1.001:
+        #正套需要满足资金费率大于阈值，且合约价格大于现货价格千分之2
+        if feerate > threshold_funding_rate and swap_price / spot_price > 1.002:
+            interest_rate = await self.accountAPI.get_interest_rate(token)
+            interest_rate = float(interest_rate["data"][0]["interestRate"])
+            #预期收益 = 正套标的资金费收益 - 合约交易手续费*2-现货交易手续费*2-预期4小时利息费用
             diff = swap_price * feerate - swap_price * fee_rates["swap_maker"] * 2 - spot_price * fee_rates[
-                "spot_maker"] * 2
+                "spot_maker"] * 2 - interest_rate / 24 * 4
             if diff > 0:
                 print(f"{token}找到了一个正套标的")
                 return token, diff, "positive", ct_val
-
-        elif feerate < -threshold_funding_rate and spot_price / swap_price > 1.001:
+        #反套需要满足资金费率小于阈值，且现货价格大于合约价格千分之2
+        elif feerate < -threshold_funding_rate and spot_price / swap_price > 1.002:
             interest_rate = await self.accountAPI.get_interest_rate(token)
             interest_rate = float(interest_rate["data"][0]["interestRate"])
+            #预期收益 = 反套标的资金费收益 - 合约交易手续费*2-现货交易手续费*2-预期4小时利息费用
             diff = -swap_price * feerate - swap_price * fee_rates["swap_maker"] * 2 - spot_price * fee_rates[
                 "spot_maker"] * 2 - interest_rate / 24 * 4
             if diff > 0:
