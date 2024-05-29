@@ -1,3 +1,6 @@
+# 纯测试用文件，用于测试异步调用的各个函数的功能
+
+
 import asyncio
 from okxv5_async.Account import AccountAPI
 from new_position import PositionMonitor

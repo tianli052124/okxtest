@@ -1,3 +1,5 @@
+# arbitragechecker.py
+
 import time
 from okxv5_async.PublicData import PublicAPI
 from okxv5_async.Account import AccountAPI
@@ -69,7 +71,7 @@ class ArbitrageChecker:
             interest_rate = float(interest_rate["data"][0]["interestRate"])
             #预期收益 = 正套标的资金费收益 - 合约交易手续费*2-现货交易手续费*2-预期4小时利息费用
             diff = swap_price * feerate - swap_price * fee_rates["swap_maker"] * 2 - spot_price * fee_rates[
-                "spot_maker"] * 2 - interest_rate / 24 * 4
+                "spot_maker"] * 2 - interest_rate / 24
             if diff > 0:
                 print(f"{token}找到了一个正套标的")
                 return token, diff, "positive", ct_val
@@ -79,7 +81,7 @@ class ArbitrageChecker:
             interest_rate = float(interest_rate["data"][0]["interestRate"])
             #预期收益 = 反套标的资金费收益 - 合约交易手续费*2-现货交易手续费*2-预期4小时利息费用
             diff = -swap_price * feerate - swap_price * fee_rates["swap_maker"] * 2 - spot_price * fee_rates[
-                "spot_maker"] * 2 - interest_rate / 24 * 4
+                "spot_maker"] * 2 - interest_rate / 24
             if diff > 0:
                 print(f"{token}找到了一个反套标的")
                 return token, diff, "negative", ct_val

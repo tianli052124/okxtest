@@ -1,3 +1,5 @@
+# new_strategy.py
+
 import asyncio
 import time
 
@@ -64,7 +66,8 @@ async def execute_trade_strategy():
 
             portfolio = arbitrage_set.sort_values(by="Difference", ascending=False)
 
-            portion_size = cash_balance / 5
+            portion_size = cash_balance / 4
+
             for a in current_pairs:
                 basetoken = a[0]
                 if basetoken in portfolio['Token'].values:

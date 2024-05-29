@@ -1,6 +1,8 @@
+# new_position.py
+
 import pandas as pd
 import asyncio
-from WebsockerManager import WebSocketManager
+from WebsocketManager import WebSocketManager
 
 class PositionMonitor:
     def __init__(self, api_key, secret_key, passphrase, flag):
