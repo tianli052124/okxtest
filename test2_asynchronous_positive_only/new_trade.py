@@ -18,7 +18,7 @@ class TradeExecutor:
     async def get_cash_balance(self):
         try:
             result = await self.accountapi.get_account_balance()
-            cash_balance = float(result["data"][0]["details"][0]["cashBal"])
+            cash_balance = float(result["data"][0]["totalEq"])
             return cash_balance
         except Exception as e:
             logger.error(f"Error getting cash balance: {e}")

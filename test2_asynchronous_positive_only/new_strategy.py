@@ -74,11 +74,11 @@ async def execute_trade_strategy():
             for index,row in positions.iterrows():
                 if row['fundingRate'] is None:
                     continue
-            # 如果资金费率小于-0.2%则平仓
-                elif float(row['fundingRate']) < -0.002:
+            # 如果资金费率小于-0.02%则平仓
+                elif float(row['fundingRate']) < -0.0002:
                     basetoken = row['instId'].split('-')[0]
-                    await trade_executor.close_position(row[basetoken+"USDT-SWAP"], 'cross', 'USDT', row['posSide'])
-                    await trade_executor.close_position(row[basetoken+"USDT"], 'cross', 'USDT', 'net')
+                    await trade_executor.close_position(row[basetoken]+"-USDT-SWAP", 'cross', 'USDT', 'short')
+                    await trade_executor.close_position(row[basetoken]+"-USDT", 'cross', 'USDT', 'net')
                 else:
                     continue
 
@@ -92,20 +92,20 @@ async def execute_trade_strategy():
 async def main():
 
     monitorws = asyncio.create_task(position_monitor.start())
-
     strategyws = asyncio.create_task(execute_trade_strategy())
-
     await asyncio.gather(monitorws, strategyws)
 
 
-if __name__ == "__main__":
+def start_event_loop():
     while True:
         try:
-            asyncio.run(main())
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(main())
         except Exception as e:
-            print(f"Program terminated with exception: {e}")
-            print("Restarting program...")
+            print(f"Program terminated with exception: {e}, will restart in 3 minutes.")
             time.sleep(180)  # 可选：等待一段3分钟再重启程序
-        else:
-            print("Program finished without exceptions.")
-            break  # 如果不想在正常结束时重启，可以使用break
+
+
+if __name__ == "__main__":
+    start_event_loop()

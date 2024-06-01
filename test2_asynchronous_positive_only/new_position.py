@@ -2,6 +2,7 @@
 
 import pandas as pd
 import asyncio
+import logging
 from WebsocketManager import WebSocketManager
 
 class PositionMonitor:
@@ -14,69 +15,59 @@ class PositionMonitor:
         self.subscribed_instruments = set()
         self.current_pairs = []
 
-        private_ws_url = "wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999"
-        public_ws_url = "wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999"
-
-        self.private_ws_manager = WebSocketManager(private_ws_url, api_key, secret_key, passphrase)
-        self.public_ws_manager = WebSocketManager(public_ws_url)
+        self.private_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999", api_key, secret_key, passphrase)
+        self.public_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999")
 
     async def update_positions(self, message):
-        new_positions = pd.DataFrame(message['data'], columns=['instId', 'instType', 'posSide', 'pos'])
-        new_positions['fundingRate'] = None
-
-        if 'fundingRate' not in self.positions_df.columns:
-            self.positions_df['fundingRate'] = None
-        if 'pos' not in self.positions_df.columns:
-            self.positions_df['pos'] = None
-
-        for _, new_position in new_positions.iterrows():
-            instId = new_position['instId']
-            pos = new_position['pos']
-
-            if pos == '0':
-                self.positions_df = self.positions_df[self.positions_df['instId'] != instId]
-                asyncio.create_task(self.public_ws_manager.unsubscribe('funding-rate', instId))
-                self.subscribed_instruments.remove(instId)
-            else:
-                if instId in self.positions_df['instId'].values:
-                    self.positions_df.loc[self.positions_df['instId'] == instId, ['instType', 'posSide', 'pos']] = \
-                    new_position[['instType', 'posSide', 'pos']].values
-                else:
-                    self.positions_df = pd.concat([self.positions_df, pd.DataFrame([new_position])], ignore_index=True)
-                    self.positions_df.loc[self.positions_df['instId'] == instId, 'fundingRate'] = None
-
-                if instId not in self.subscribed_instruments:
-                    asyncio.create_task(self.public_ws_manager.subscribe('funding-rate', instId=instId))
-                    self.subscribed_instruments.add(instId)
+        for item in message.get('data', []):
+            self._update_balances(item.get('balData', []))
+            await self._update_positions(item.get('posData', []))
 
         self.positions_df = self.positions_df[self.positions_df['pos'] != '0']
-
         if self.positions_df.empty:
-            print("All positions have been closed.")
+            logging.info("All positions have been closed.")
         else:
-            print(f"Current positions:\n{self.positions_df}")
+            logging.info("Current positions:\n%s", self.positions_df)
 
         self.check_pairs()
 
+    def _update_balances(self, bal_data):
+        for token in bal_data:
+            if token['ccy'] != 'USDT':
+                self._update_or_add_position(token['ccy'] + '-USDT', 'SPOT', token['cashBal'], None)
+
+    async def _update_positions(self, pos_data):
+        for pos in pos_data:
+            if pos['pos'] == '0':
+                self._update_or_add_position(pos['instId'], pos['instType'], pos['pos'], pos['posSide'])
+                await self.public_ws_manager.unsubscribe('funding-rate', pos['instId'])
+                self.subscribed_instruments.discard(pos['instId'])
+            else:
+                self._update_or_add_position(pos['instId'], pos['instType'], pos['pos'], pos['posSide'])
+                if pos['instId'] not in self.subscribed_instruments:
+                    await self.public_ws_manager.subscribe('funding-rate', instId=pos['instId'])
+                    self.subscribed_instruments.add(pos['instId'])
+
+    def _update_or_add_position(self, inst_id, inst_type, pos, pos_side):
+        if inst_id in self.positions_df['instId'].values:
+            self.positions_df.loc[self.positions_df['instId'] == inst_id, ['instType', 'pos', 'posSide']] = inst_type, pos, pos_side
+        else:
+            new_row = {'instId': inst_id, 'instType': inst_type, 'pos': pos, 'posSide': pos_side, 'fundingRate': None}
+            self.positions_df = pd.concat([self.positions_df, pd.DataFrame([new_row])], ignore_index=True)
+
     def check_pairs(self):
-        currentpairs = []
         token_positions = {}
         for _, row in self.positions_df.iterrows():
             base_token = row['instId'].split('-')[0]
-            if base_token not in token_positions:
-                token_positions[base_token] = {'margin': None, 'swap': None, 'posSide': None}
+            token_positions.setdefault(base_token, {'margin': None, 'swap': None, 'posSide': None})
             if row['instType'] == 'MARGIN':
                 token_positions[base_token]['margin'] = row['instId']
             elif row['instType'] == 'SWAP':
                 token_positions[base_token]['swap'] = row['instId']
                 token_positions[base_token]['posSide'] = row['posSide']
 
-        for base_token, positions in token_positions.items():
-            if positions['margin'] and positions['swap']:
-                mode = 'negative' if positions['posSide'] == 'long' else 'positive'
-                currentpairs.append((base_token, mode))
-
-        self.current_pairs = currentpairs
+        self.current_pairs = [(token, 'negative' if pos['posSide'] == 'long' else 'positive')
+                              for token, pos in token_positions.items() if pos['margin'] and pos['swap']]
 
     def get_current_pairs_count(self):
         self.check_pairs()
@@ -89,29 +80,23 @@ class PositionMonitor:
     async def handle_private_message(self):
         async for message in self.private_ws_manager.receive():
             if message.get('event') == 'login' and message.get('code') == '0':
-                print("Private WebSocket login successful")
-                await self.private_ws_manager.subscribe('positions', instType='ANY')
+                logging.info("Private WebSocket login successful")
+                await self.private_ws_manager.subscribe('balance_and_position')
             elif message.get('event') == 'subscribe':
-                print(f"Subscribed to: {message.get('arg')}")
-            elif 'arg' in message and message['arg']['channel'] == 'positions':
+                logging.info("Subscribed to: %s", message.get('arg'))
+            elif message.get('arg', {}).get('channel') == 'balance_and_position':
+                logging.info("%s", message)
                 await self.update_positions(message)
 
     async def handle_public_message(self):
         async for message in self.public_ws_manager.receive():
-            if 'arg' in message and message['arg']['channel'] == 'funding-rate' and 'data' in message:
-                for data in message['data']:
-                    instId, fundingRate = data['instId'], data['fundingRate']
-                    if instId and fundingRate:
-                        self.positions_df.loc[self.positions_df['instId'] == instId, 'fundingRate'] = fundingRate
-                        print(f"Updated funding rate for instrument {instId}: {fundingRate}")
-                        print("Updated positions DataFrame:")
-                        print(self.positions_df)
+            if message.get('arg', {}).get('channel') == 'funding-rate':
+                for data in message.get('data', []):
+                    self.positions_df.loc[self.positions_df['instId'] == data['instId'], 'fundingRate'] = data['fundingRate']
+                    logging.info("Updated funding rate for instrument %s: %s", data['instId'], data['fundingRate'])
+                    logging.info("Updated positions DataFrame:\n%s", self.positions_df)
 
     async def start(self):
         await self.private_ws_manager.connect()
         await self.public_ws_manager.connect()
-
-        private_ws_task = asyncio.create_task(self.handle_private_message())
-        public_ws_task = asyncio.create_task(self.handle_public_message())
-
-        await asyncio.gather(private_ws_task, public_ws_task)
+        await asyncio.gather(self.handle_private_message(), self.handle_public_message())
