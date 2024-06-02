@@ -47,9 +47,9 @@ class ArbitrageChecker:
 
         feerate = float(inst_rate["data"][0]["fundingRate"])
         swap_price = await self.marketAPI.get_ticker(f"{token}-USDT-SWAP")
-        swap_price = float(swap_price["data"][0]["last"])
+        swap_price = float(swap_price["data"][0]["bidPx"])
         spot_price = await self.marketAPI.get_ticker(instId=f"{token}-USDT")
-        spot_price = float(spot_price["data"][0]["last"])
+        spot_price = float(spot_price["data"][0]["askPx"])
         ct_val = await self.publicAPI.get_instruments(instType="SWAP", instFamily=f"{token}-USDT")
         ct_val = float(ct_val["data"][0]["ctVal"])
 
@@ -59,7 +59,7 @@ class ArbitrageChecker:
 
     async def check_arbitrage(self, token):
         fee_rates = await self.get_fee_rates()
-        threshold_funding_rate = 0.00001
+        threshold_funding_rate = 0.001
         token_info = await self.get_token_info(token)
         if not token_info:
             return None
