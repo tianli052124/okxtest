@@ -66,13 +66,26 @@ class WebSocketManager:
     async def send_ping(self):
         try:
             await self.websocket.send('ping')
-            print("Ping sent")
         except Exception as e:
             print(f"Error sending ping: {e}")
 
     async def receive(self):
-        async for message in self.websocket:
-            yield json.loads(message)
+        while True:
+            try:
+                message = await asyncio.wait_for(self.websocket.recv(), timeout=25)
+                print("Message received, resetting timer.")
+                yield json.loads(message)
+            except asyncio.TimeoutError:
+                print("No message received in 25 seconds, sending ping.")
+                await self.send_ping()
+                try:
+                    pong = await asyncio.wait_for(self.websocket.recv(), timeout=5)
+                    if pong != 'pong':
+                        raise ValueError("Received message is not 'pong'")
+                    print("Pong received, resetting timer.")
+                except (asyncio.TimeoutError, ValueError):
+                    print("No pong received in 5 seconds, reconnecting.")
+                    await self.connect()
 
     async def close(self):
         await self.websocket.close()

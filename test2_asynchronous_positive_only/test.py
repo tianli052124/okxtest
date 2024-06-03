@@ -130,10 +130,10 @@ async def main():
     arbitragechecker = ArbitrageChecker(api_key, secret, passphrase, flag)
     publicapi = PublicAPI(api_key, secret, passphrase, flag)
     basetoken = "KISHU"
-    # await tradeexecutor.place_order("ATOM-USDT", "cross", "sell", "limit", "100", "USDT", posSide="short", px=scientific_to_float(5.580000e-08))
+    await tradeexecutor.place_order("SOL-USDT", "cash", "buy", "limit", "100", "USDT", px=165.33)
     # await tradeexecutor.close_position(basetoken + "-USDT-SWAP", 'cross', 'USDT', 'short')
     # await tradeexecutor.close_position(basetoken + "-USDT", 'cross', 'USDT', 'net')
-    await position_monitor1.start()
+    # await position_monitor1.start()
 
 
 

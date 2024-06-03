@@ -109,12 +109,12 @@ class TradeExecutor:
                     swap_order_id = await self.place_order(instId=swap_instId, tdMode="cross", side="sell",
                                                            posSide="short", ordType="limit", sz=swap_amount, px=swap_bid)
 
-                    margin_order_id = await self.place_order(instId=margin_instId, ccy="USDT", tdMode="cross",
+                    margin_order_id = await self.place_order(instId=margin_instId, ccy="USDT", tdMode="cash",
                                                              side="buy", ordType="limit", sz=spot_amount,
                                                              px=scientific_to_float(margin_ask*0.998))
 
             else:
-                    margin_order_id = await self.place_order(instId=margin_instId, ccy="USDT", tdMode="cross",
+                    margin_order_id = await self.place_order(instId=margin_instId, ccy="USDT", tdMode="cash",
                                                              side="buy", ordType="limit", sz=spot_amount,
                                                              px=margin_ask)
 
