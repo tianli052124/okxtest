@@ -14,6 +14,7 @@ class PositionMonitor:
         self.positions_df = pd.DataFrame(columns=['instId', 'instType', 'pos', 'posSide', 'fundingRate'])
         self.subscribed_instruments = set()
         self.current_pairs = []
+        self.unpaired_positions = []
 
         self.private_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999", api_key, secret_key, passphrase)
         self.public_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999")
@@ -59,15 +60,18 @@ class PositionMonitor:
         token_positions = {}
         for _, row in self.positions_df.iterrows():
             base_token = row['instId'].split('-')[0]
-            token_positions.setdefault(base_token, {'margin': None, 'swap': None, 'posSide': None})
-            if row['instType'] == 'MARGIN':
-                token_positions[base_token]['margin'] = row['instId']
+            token_positions.setdefault(base_token, {'spot': None, 'swap': None, 'posSide': None})
+            if row['instType'] == 'SPOT':
+                token_positions[base_token]['spot'] = row['instId']
             elif row['instType'] == 'SWAP':
                 token_positions[base_token]['swap'] = row['instId']
                 token_positions[base_token]['posSide'] = row['posSide']
 
         self.current_pairs = [(token, 'negative' if pos['posSide'] == 'long' else 'positive')
-                              for token, pos in token_positions.items() if pos['margin'] and pos['swap']]
+                              for token, pos in token_positions.items() if pos['spot'] and pos['swap']]
+
+        self.unpaired_positions = [(token, 'SPOT') if pos['spot'] else (token, 'SWAP') for token, pos in
+                                   token_positions.items() if not (pos['spot'] and pos['swap'])]
 
     def get_current_pairs_count(self):
         self.check_pairs()

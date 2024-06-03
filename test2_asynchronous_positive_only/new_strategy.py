@@ -28,6 +28,7 @@ position_monitor = PositionMonitor(api_key, secret_key, passphrase, flag)
 # 初始化异步套利检查器
 arbitrage_checker = ArbitrageChecker(api_key, secret_key, passphrase, flag)
 
+unpaired_positions_time = {}
 
 async def execute_trade_strategy():
     # 获取现金余额
@@ -50,7 +51,7 @@ async def execute_trade_strategy():
     while True:
         try:
             portion_size = cash_balance / 8
-            while numberofpairs < 3:
+            while numberofpairs < 4:
                 print("Getting arbitrage set...")
                 portfolio = await arbitrage_checker.get_arbitrage_set()
                 for a in current_pairs:
@@ -68,7 +69,7 @@ async def execute_trade_strategy():
                     await asyncio.sleep(5)
                     current_pairs = await position_monitor.get_updated_current_pairs()  # 更新 current_pairs
                     numberofpairs = len(current_pairs)  # 更新 numberofpairs
-
+                await asyncio.sleep(5)
             #检查有没有需要平仓的套利组合
             positions = position_monitor.positions_df
             for index,row in positions.iterrows():
@@ -81,6 +82,24 @@ async def execute_trade_strategy():
                     await trade_executor.close_position(row[basetoken]+"-USDT", 'cross', 'USDT', 'net')
                 else:
                     continue
+
+            unpaired_positions = position_monitor.unpaired_positions
+            if not unpaired_positions:
+                continue  # Skip the rest of the loop if unpaired_positions is empty
+
+            for token, instType in unpaired_positions:
+                if token not in unpaired_positions_time:
+                    # Store the time when the unpaired position is first detected
+                    unpaired_positions_time[token] = time.time()
+                elif time.time() - unpaired_positions_time[token] > 60:
+                    # If the unpaired position exists for more than 60 seconds, close the position
+                    print(f"Closing unpaired position for {token}...")
+                    if instType == 'SPOT':
+                        await trade_executor.close_position(token + "-USDT", 'cross', 'USDT', 'net')
+                    elif instType == 'SWAP':
+                        await trade_executor.close_position(token + "-USDT-SWAP", 'cross', 'USDT', 'short')
+                    # Remove the token from the dictionary after closing the position
+                    del unpaired_positions_time[token]
 
             await asyncio.sleep(60)
 

@@ -28,6 +28,7 @@ class PositionMonitor1:
         self.positions_df = pd.DataFrame(columns=['instId', 'instType', 'pos', 'posSide', 'fundingRate'])
         self.subscribed_instruments = set()
         self.current_pairs = []
+        self.unpaired_positions = []
 
         self.private_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999", api_key, secret_key, passphrase)
         self.public_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999")
@@ -73,15 +74,18 @@ class PositionMonitor1:
         token_positions = {}
         for _, row in self.positions_df.iterrows():
             base_token = row['instId'].split('-')[0]
-            token_positions.setdefault(base_token, {'margin': None, 'swap': None, 'posSide': None})
-            if row['instType'] == 'MARGIN':
-                token_positions[base_token]['margin'] = row['instId']
+            token_positions.setdefault(base_token, {'spot': None, 'swap': None, 'posSide': None})
+            if row['instType'] == 'SPOT':
+                token_positions[base_token]['spot'] = row['instId']
             elif row['instType'] == 'SWAP':
                 token_positions[base_token]['swap'] = row['instId']
                 token_positions[base_token]['posSide'] = row['posSide']
 
         self.current_pairs = [(token, 'negative' if pos['posSide'] == 'long' else 'positive')
-                              for token, pos in token_positions.items() if pos['margin'] and pos['swap']]
+                              for token, pos in token_positions.items() if pos['spot'] and pos['swap']]
+
+        self.unpaired_positions = [(token, 'SPOT') if pos['spot'] else (token, 'SWAP') for token, pos in token_positions.items() if not (pos['spot'] and pos['swap'])]
+
 
     def get_current_pairs_count(self):
         self.check_pairs()
@@ -109,6 +113,7 @@ class PositionMonitor1:
                     self.positions_df.loc[self.positions_df['instId'] == data['instId'], 'fundingRate'] = data['fundingRate']
                     logging.info("Updated funding rate for instrument %s: %s", data['instId'], data['fundingRate'])
                     logging.info("Updated positions DataFrame:\n%s", self.positions_df)
+                    print("unpaired: ", self.unpaired_positions)
 
     async def start(self):
         await self.private_ws_manager.connect()
@@ -130,10 +135,14 @@ async def main():
     arbitragechecker = ArbitrageChecker(api_key, secret, passphrase, flag)
     publicapi = PublicAPI(api_key, secret, passphrase, flag)
     basetoken = "KISHU"
-    await tradeexecutor.place_order("SOL-USDT", "cash", "buy", "limit", "100", "USDT", px=165.33)
+    # await tradeexecutor.place_order("SOL-USDT", "cash", "buy", "limit", "100", "USDT", px=165.33)
     # await tradeexecutor.close_position(basetoken + "-USDT-SWAP", 'cross', 'USDT', 'short')
     # await tradeexecutor.close_position(basetoken + "-USDT", 'cross', 'USDT', 'net')
-    # await position_monitor1.start()
+    await position_monitor1.start()
+
+
+
+
 
 
 
