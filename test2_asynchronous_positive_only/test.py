@@ -34,9 +34,11 @@ class PositionMonitor1:
         self.public_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999")
 
     async def update_positions(self, message):
-        for item in message.get('data', []):
-            self._update_balances(item.get('balData', []))
-            await self._update_positions(item.get('posData', []))
+        if message.get('arg', {}).get('channel') == 'account':
+            # print(message.get('data')[0].get('details', []))
+             self._update_balances(message.get('data')[0].get('details', []))
+        elif message.get('arg', {}).get('channel') == 'positions':
+            await self._update_positions(message.get('data', []))
 
         self.positions_df = self.positions_df[self.positions_df['pos'] != '0']
         if self.positions_df.empty:
@@ -48,8 +50,11 @@ class PositionMonitor1:
 
     def _update_balances(self, bal_data):
         for token in bal_data:
+            print(token)
             if token['ccy'] != 'USDT':
                 self._update_or_add_position(token['ccy'] + '-USDT', 'SPOT', token['cashBal'], None)
+            if token['eqUsd'] < 0.01:
+                self._update_or_add_position(token['ccy'] + '-USDT', 'SPOT', '0', None)
 
     async def _update_positions(self, pos_data):
         for pos in pos_data:
@@ -99,11 +104,15 @@ class PositionMonitor1:
         async for message in self.private_ws_manager.receive():
             if message.get('event') == 'login' and message.get('code') == '0':
                 logging.info("Private WebSocket login successful")
-                await self.private_ws_manager.subscribe('balance_and_position')
+                await self.private_ws_manager.subscribe('positions', 'ANY')
+                await self.private_ws_manager.subscribe('account')
             elif message.get('event') == 'subscribe':
                 logging.info("Subscribed to: %s", message.get('arg'))
-            elif message.get('arg', {}).get('channel') == 'balance_and_position':
+            elif message.get('arg', {}).get('channel') == 'positions':
                 logging.info("%s", message)
+                await self.update_positions(message)
+            elif message.get('arg', {}).get('channel') == 'account':
+                logging.info("%s", message) # Print account info
                 await self.update_positions(message)
 
     async def handle_public_message(self):
@@ -135,10 +144,14 @@ async def main():
     arbitragechecker = ArbitrageChecker(api_key, secret, passphrase, flag)
     publicapi = PublicAPI(api_key, secret, passphrase, flag)
     basetoken = "KISHU"
-    # await tradeexecutor.place_order("SOL-USDT", "cash", "buy", "limit", "100", "USDT", px=165.33)
+    # await tradeexecutor.place_order("SOL-USDT", "cash", "sell", "limit", "100", "USDT", px=166)
     # await tradeexecutor.close_position(basetoken + "-USDT-SWAP", 'cross', 'USDT', 'short')
     # await tradeexecutor.close_position(basetoken + "-USDT", 'cross', 'USDT', 'net')
     await position_monitor1.start()
+    # res = await tradeexecutor.get_order_status("SOL-USDT", "1508697189027889152")
+    # spot_state, spot_fillsize = res
+    # await tradeexecutor.place_order("SOL-USDT", "cash", "sell", "limit", spot_fillsize, "USDT", px=166)
+
 
 
 

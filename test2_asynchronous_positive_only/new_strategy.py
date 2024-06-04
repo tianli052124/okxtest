@@ -67,7 +67,7 @@ async def execute_trade_strategy():
                     print(f"Executing arbitrage trade for {row['Token']}...")
                     await trade_executor.open_arbitrage_trade(row['Token'], row['Type'], portion_size, token_info[3], row['ContractValue'], token_info[5])
                     await asyncio.sleep(5)
-                    current_pairs = await position_monitor.get_updated_current_pairs()  # 更新 current_pairs
+                    current_pairs = position_monitor.get_updated_current_pairs()  # 更新 current_pairs
                     numberofpairs = len(current_pairs)  # 更新 numberofpairs
                 await asyncio.sleep(5)
             #检查有没有需要平仓的套利组合
@@ -79,7 +79,8 @@ async def execute_trade_strategy():
                 elif float(row['fundingRate']) < -0.0002:
                     basetoken = row['instId'].split('-')[0]
                     await trade_executor.close_position(row[basetoken]+"-USDT-SWAP", 'cross', 'USDT', 'short')
-                    await trade_executor.close_position(row[basetoken]+"-USDT", 'cross', 'USDT', 'net')
+                    spot_size = positions[positions['instId'] == row[basetoken]+"-USDT"]['pos'].values[0]
+                    await trade_executor.place_order(row[basetoken]+"-USDT", 'cash', 'sell', 'market', spot_size)
                 else:
                     continue
 
@@ -95,7 +96,8 @@ async def execute_trade_strategy():
                     # If the unpaired position exists for more than 60 seconds, close the position
                     print(f"Closing unpaired position for {token}...")
                     if instType == 'SPOT':
-                        await trade_executor.close_position(token + "-USDT", 'cross', 'USDT', 'net')
+                        size = positions[positions['instId'] == token + '-USDT']['pos'].values[0]
+                        await trade_executor.place_order(token + "-USDT", 'cash', 'sell', 'market', size)
                     elif instType == 'SWAP':
                         await trade_executor.close_position(token + "-USDT-SWAP", 'cross', 'USDT', 'short')
                     # Remove the token from the dictionary after closing the position

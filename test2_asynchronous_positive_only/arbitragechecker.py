@@ -56,9 +56,9 @@ class ArbitrageChecker:
 
         feerate = float(inst_rate["data"][0]["fundingRate"])
         swap_price = await self.marketAPI.get_ticker(f"{token}-USDT-SWAP")
-        swap_price = float(swap_price["data"][0]["last"])
+        swap_price = float(swap_price["data"][0]["bidPx"])
         spot_price = await self.marketAPI.get_ticker(instId=f"{token}-USDT")
-        spot_price = float(spot_price["data"][0]["last"])
+        spot_price = float(spot_price["data"][0]["askPx"])
         ct_val = await self.publicAPI.get_instruments(instType="SWAP", instFamily=f"{token}-USDT")
         ct_val = float(ct_val["data"][0]["ctVal"])
         lot_size = await self.publicAPI.get_instruments(instType="MARGIN", instId=f"{token}-USDT")
@@ -70,16 +70,16 @@ class ArbitrageChecker:
 
     async def check_arbitrage(self, token):
         fee_rates = await self.get_fee_rates()
-        threshold_funding_rate = 0.002
+        threshold_funding_rate = 0.00001
         token_info = await self.get_token_info(token)
         if not token_info:
             return None
 
         token, feerate, swap_price, spot_price, ct_val, lot_size = token_info
         #正套需要满足资金费率大于阈值，且合约价格大于现货价格千分之2
-        if feerate > threshold_funding_rate and swap_price > spot_price * 1.002:
+        if feerate > threshold_funding_rate :
             #预期收益 = 正套标的资金费收益 - 合约交易手续费*2-现货交易手续费*2
-            diff = swap_price * feerate - swap_price * fee_rates['swap_taker']*2 - spot_price * fee_rates['spot_taker']*2
+            diff = 1
             if diff > 0:
                 print(f"{token}找到了一个正套标的")
                 return token, diff, "positive", ct_val

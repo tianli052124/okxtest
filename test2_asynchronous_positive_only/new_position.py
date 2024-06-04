@@ -5,6 +5,7 @@ import asyncio
 import logging
 from WebsocketManager import WebSocketManager
 
+
 class PositionMonitor:
     def __init__(self, api_key, secret_key, passphrase, flag):
         self.api_key = api_key
@@ -16,13 +17,15 @@ class PositionMonitor:
         self.current_pairs = []
         self.unpaired_positions = []
 
-        self.private_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999", api_key, secret_key, passphrase)
+        self.private_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999", api_key,
+                                                   secret_key, passphrase)
         self.public_ws_manager = WebSocketManager("wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999")
 
     async def update_positions(self, message):
-        for item in message.get('data', []):
-            self._update_balances(item.get('balData', []))
-            await self._update_positions(item.get('posData', []))
+        if message.get('arg', {}).get('channel') == 'account':
+            self._update_balances(message.get('data')[0].get('details', []))
+        elif message.get('arg', {}).get('channel') == 'positions':
+            await self._update_positions(message.get('data', []))
 
         self.positions_df = self.positions_df[self.positions_df['pos'] != '0']
         if self.positions_df.empty:
@@ -36,6 +39,8 @@ class PositionMonitor:
         for token in bal_data:
             if token['ccy'] != 'USDT':
                 self._update_or_add_position(token['ccy'] + '-USDT', 'SPOT', token['cashBal'], None)
+            if float(token['eqUsd']) < 0.01:
+                self._update_or_add_position(token['ccy'] + '-USDT', 'SPOT', '0', None)
 
     async def _update_positions(self, pos_data):
         for pos in pos_data:
@@ -51,7 +56,8 @@ class PositionMonitor:
 
     def _update_or_add_position(self, inst_id, inst_type, pos, pos_side):
         if inst_id in self.positions_df['instId'].values:
-            self.positions_df.loc[self.positions_df['instId'] == inst_id, ['instType', 'pos', 'posSide']] = inst_type, pos, pos_side
+            self.positions_df.loc[
+                self.positions_df['instId'] == inst_id, ['instType', 'pos', 'posSide']] = inst_type, pos, pos_side
         else:
             new_row = {'instId': inst_id, 'instType': inst_type, 'pos': pos, 'posSide': pos_side, 'fundingRate': None}
             self.positions_df = pd.concat([self.positions_df, pd.DataFrame([new_row])], ignore_index=True)
@@ -85,20 +91,26 @@ class PositionMonitor:
         async for message in self.private_ws_manager.receive():
             if message.get('event') == 'login' and message.get('code') == '0':
                 logging.info("Private WebSocket login successful")
-                await self.private_ws_manager.subscribe('balance_and_position')
+                await self.private_ws_manager.subscribe('positions', 'ANY')
+                await self.private_ws_manager.subscribe('account')
             elif message.get('event') == 'subscribe':
                 logging.info("Subscribed to: %s", message.get('arg'))
-            elif message.get('arg', {}).get('channel') == 'balance_and_position':
+            elif message.get('arg', {}).get('channel') == 'positions':
                 logging.info("%s", message)
+                await self.update_positions(message)
+            elif message.get('arg', {}).get('channel') == 'account':
+                logging.info("%s", message)  # Print account info
                 await self.update_positions(message)
 
     async def handle_public_message(self):
         async for message in self.public_ws_manager.receive():
             if message.get('arg', {}).get('channel') == 'funding-rate':
                 for data in message.get('data', []):
-                    self.positions_df.loc[self.positions_df['instId'] == data['instId'], 'fundingRate'] = data['fundingRate']
+                    self.positions_df.loc[self.positions_df['instId'] == data['instId'], 'fundingRate'] = data[
+                        'fundingRate']
                     logging.info("Updated funding rate for instrument %s: %s", data['instId'], data['fundingRate'])
                     logging.info("Updated positions DataFrame:\n%s", self.positions_df)
+                    print("unpaired: ", self.unpaired_positions)
 
     async def start(self):
         await self.private_ws_manager.connect()

@@ -45,9 +45,10 @@ class TradeExecutor:
     async def get_order_status(self, instId, ordId):
         try:
             result = await self.tradeapi.get_order(instId, ordId)
-            order_status = result["data"][0]["state"]
-            logger.info(f"Order status {ordId}: {order_status}")
-            return order_status
+            order_state = result["data"][0]["state"]
+            order_fillsize = float(result["data"][0]["fillSz"]) + float(result["data"][0]["fee"])
+            logger.info(f"Order status {ordId}: {order_state}, fill size: {order_fillsize}")
+            return order_state, order_fillsize
         except Exception as e:
             logger.error(f"Error getting order status: {e}")
             return None
@@ -88,12 +89,12 @@ class TradeExecutor:
     async def open_arbitrage_trade(self, token, mode, portion_size, spot_price, contract_value, divider):
         try:
             swap_instId = token + "-USDT-SWAP"
-            margin_instId = token + "-USDT"
+            spot_id = token + "-USDT"
 
             swap_bid, swap_ask, swap_bid_size, swap_ask_size, swap_spread = await self.get_liquidity_info(swap_instId)
-            margin_bid, margin_ask, margin_bid_size, margin_ask_size, margin_spread = await self.get_liquidity_info(margin_instId)
+            margin_bid, margin_ask, margin_bid_size, margin_ask_size, margin_spread = await self.get_liquidity_info(spot_id)
 
-            max_size = await self.accountapi.get_max_order_size(instId=margin_instId, tdMode="cross", ccy="USDT")
+            max_size = await self.accountapi.get_max_order_size(instId=spot_id, tdMode="cross", ccy="USDT")
             max_size = float(max_size["data"][0]["maxBuy"])
             if max_size == 0:
                 logger.info(f"Max size for buying {token} is zero. Skipping this token.")
@@ -103,18 +104,18 @@ class TradeExecutor:
             spot_amount = round_to(swap_amount * contract_value*(1+0.001),divider)
 
             await self.set_leverage(instId=swap_instId, lever=1)
-            await self.set_leverage(instId=margin_instId, lever=1)
+            await self.set_leverage(instId=spot_id, lever=1)
 
             if swap_spread > margin_spread:
                     swap_order_id = await self.place_order(instId=swap_instId, tdMode="cross", side="sell",
                                                            posSide="short", ordType="limit", sz=swap_amount, px=swap_bid)
 
-                    margin_order_id = await self.place_order(instId=margin_instId, ccy="USDT", tdMode="cash",
+                    spot_order_id = await self.place_order(instId=spot_id, ccy="USDT", tdMode="cash",
                                                              side="buy", ordType="limit", sz=spot_amount,
                                                              px=scientific_to_float(margin_ask*0.998))
 
             else:
-                    margin_order_id = await self.place_order(instId=margin_instId, ccy="USDT", tdMode="cash",
+                    spot_order_id = await self.place_order(instId=spot_id, ccy="USDT", tdMode="cash",
                                                              side="buy", ordType="limit", sz=spot_amount,
                                                              px=margin_ask)
 
@@ -123,28 +124,30 @@ class TradeExecutor:
 
             # 确认订单状态
             await asyncio.sleep(10)  # 等待10秒钟以确保订单被处理
-            margin_status = await self.get_order_status(instId=margin_instId, ordId=margin_order_id)
+            spot_status = await self.get_order_status(instId=spot_id, ordId=spot_order_id)
+            spot_state, spot_fillsize = spot_status
             swap_status = await self.get_order_status(instId=token + "-USDT-SWAP", ordId=swap_order_id)
+            swap_state, swap_fillsize = swap_status
 
-            if margin_status == 'filled' and swap_status == 'filled':
+            if spot_state == 'filled' and swap_state == 'filled':
                 logger.info(f"Both orders for {token} filled successfully.")
-            elif margin_status == 'filled' and swap_status == 'partially_filled':
+            elif spot_state == 'filled' and swap_state== 'partially_filled':
                 logger.info(f"Margin order for {token} filled successfully, but swap order partially filled.")
                 asyncio.sleep(10)
-            elif margin_status == 'filled' and swap_status =='live':
+            elif spot_state == 'filled' and swap_state =='live':
                 logger.info(f"Margin order for {token} filled successfully, but swap order still live.")
                 await self.cancel_order(swap_instId, swap_order_id)
-                await self.close_position(margin_instId, 'cross', 'USDT', 'net')
-            elif margin_status == 'live' and swap_status == 'filled':
+                await self.place_order(spot_id, 'cash', 'USDT', 'market', spot_fillsize, px=None)
+            elif spot_state == 'live' and swap_state == 'filled':
                 logger.info(f"Swap order for {token} filled successfully, but margin order still live.")
-                await self.cancel_order(margin_instId, margin_order_id)
+                await self.cancel_order(spot_id, spot_order_id)
                 await self.close_position(swap_instId, 'cross', 'USDT', 'short')
-            elif margin_status == 'partially_filled' and swap_status == 'filled':
+            elif spot_state == 'partially_filled' and swap_state == 'filled':
                 logger.info(f"Margin order for {token} partially filled, but swap order filled successfully.")
                 asyncio.sleep(10)
-            elif margin_status == 'live' and swap_status =='live':
+            elif spot_state == 'live' and swap_state =='live':
                 logger.info(f"Both orders for {token} still live.")
-                await self.cancel_order(margin_instId, margin_order_id)
+                await self.cancel_order(spot_id, spot_order_id)
                 await self.cancel_order(swap_instId, swap_order_id)
 
 
