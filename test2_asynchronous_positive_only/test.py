@@ -1,5 +1,5 @@
 # 纯测试用文件，用于测试异步调用的各个函数的功能
-
+import decimal
 import logging
 import json
 import asyncio
@@ -143,20 +143,23 @@ async def main():
     tradeapi = TradeAPI(api_key, secret, passphrase, flag)
     arbitragechecker = ArbitrageChecker(api_key, secret, passphrase, flag)
     publicapi = PublicAPI(api_key, secret, passphrase, flag)
-    basetoken = "KISHU"
-    # await tradeexecutor.place_order("SOL-USDT", "cash", "sell", "limit", "100", "USDT", px=166)
-    # await tradeexecutor.close_position(basetoken + "-USDT-SWAP", 'cross', 'USDT', 'short')
-    # await tradeexecutor.close_position(basetoken + "-USDT", 'cross', 'USDT', 'net')
-    await position_monitor1.start()
-    # res = await tradeexecutor.get_order_status("SOL-USDT", "1508697189027889152")
-    # spot_state, spot_fillsize = res
-    # await tradeexecutor.place_order("SOL-USDT", "cash", "sell", "limit", spot_fillsize, "USDT", px=166)
+    basetoken = "SATS"
+    swap_instId = f"{basetoken}-USDT-SWAP"
+    spot_id = f"{basetoken}-USDT"
 
+    swap_bid, swap_ask, swap_bid_size, swap_ask_size, swap_spread = await tradeexecutor.get_liquidity_info(swap_instId)
+    margin_bid, margin_ask, margin_bid_size, margin_ask_size, margin_spread = await tradeexecutor.get_liquidity_info(spot_id)
+    print(swap_bid, swap_ask, swap_bid_size, swap_ask_size, swap_spread)
+    print(margin_bid, margin_ask, margin_bid_size, margin_ask_size, margin_spread)
+    swap_bid_precision = len(str(swap_bid).split('.')[1]) if '.' in str(swap_bid) else 0
+    print(swap_bid_precision)
+    margin_ask_precision = len(str(margin_ask).split('.')[1]) if '.' in str(margin_ask) else 0
+    print(margin_ask_precision)
 
-
-
-
-
+    formatted_swap_bid = f"{float(swap_bid):.{swap_bid_precision}f}"
+    print(formatted_swap_bid)
+    formatted_margin_ask = f"{float(margin_ask):.{margin_ask_precision}f}"
+    print(formatted_margin_ask)
 
 
 

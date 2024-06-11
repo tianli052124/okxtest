@@ -112,7 +112,7 @@ class TradeExecutor:
 
                     spot_order_id = await self.place_order(instId=spot_id, ccy="USDT", tdMode="cash",
                                                              side="buy", ordType="limit", sz=spot_amount,
-                                                             px=scientific_to_float(margin_ask*0.998))
+                                                             px=scientific_to_float(margin_ask))
 
             else:
                     spot_order_id = await self.place_order(instId=spot_id, ccy="USDT", tdMode="cash",
@@ -120,12 +120,12 @@ class TradeExecutor:
                                                              px=margin_ask)
 
                     swap_order_id = await self.place_order(instId=swap_instId, tdMode="cross", side="sell",
-                                                           posSide="short", ordType="limit", sz=swap_amount, px=scientific_to_float(swap_bid*1.002))
+                                                           posSide="short", ordType="limit", sz=swap_amount, px=scientific_to_float(swap_bid))
 
             # 确认订单状态
             await asyncio.sleep(10)  # 等待10秒钟以确保订单被处理
             spot_status = await self.get_order_status(instId=spot_id, ordId=spot_order_id)
-            spot_state, spot_fillsize = spot_status
+            spot_state, spot_fillsize = spot_status 
             swap_status = await self.get_order_status(instId=token + "-USDT-SWAP", ordId=swap_order_id)
             swap_state, swap_fillsize = swap_status
 
@@ -137,7 +137,7 @@ class TradeExecutor:
             elif spot_state == 'filled' and swap_state =='live':
                 logger.info(f"Margin order for {token} filled successfully, but swap order still live.")
                 await self.cancel_order(swap_instId, swap_order_id)
-                await self.place_order(spot_id, 'cash', 'USDT', 'market', spot_fillsize, px=None)
+                await self.place_order(spot_id, 'cash', 'sell', 'market', ccy='USDT', sz=spot_fillsize, px=None)
             elif spot_state == 'live' and swap_state == 'filled':
                 logger.info(f"Swap order for {token} filled successfully, but margin order still live.")
                 await self.cancel_order(spot_id, spot_order_id)
